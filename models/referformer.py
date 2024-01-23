@@ -2,6 +2,10 @@
 ReferFormer model class.
 Modified from DETR (https://github.com/facebookresearch/detr)
 """
+
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+
 import torch
 import torch.nn.functional as F
 from torch import nn
