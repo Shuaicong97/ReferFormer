@@ -166,14 +166,14 @@ class HungarianMatcher(nn.Module):
 
             # mask cost
             # Compute the focal loss between masks
-            cost_mask = sigmoid_focal_coef(out_mask.transpose(0, 1), tgt_mask.unsqueeze(0))
+            # cost_mask = sigmoid_focal_coef(out_mask.transpose(0, 1), tgt_mask.unsqueeze(0))
 
             # Compute the dice loss betwen masks
-            cost_dice = -dice_coef(out_mask.transpose(0, 1), tgt_mask.unsqueeze(0))
+            # cost_dice = -dice_coef(out_mask.transpose(0, 1), tgt_mask.unsqueeze(0))
 
             # Final cost matrix
-            C = self.cost_class * cost_class + self.cost_bbox * cost_bbox + self.cost_giou * cost_giou + \
-                self.cost_mask * cost_mask + self.cost_dice * cost_dice  # [q, 1]
+            C = self.cost_class * cost_class + self.cost_bbox * cost_bbox + self.cost_giou * cost_giou #+ \
+               # self.cost_mask * cost_mask + self.cost_dice * cost_dice  # [q, 1]
 
             # Only has one tgt, MinCost Matcher
             _, src_ind = torch.min(C, dim=0)
