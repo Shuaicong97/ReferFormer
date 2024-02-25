@@ -195,6 +195,9 @@ class SetCriterion(nn.Module):
             for i, aux_outputs in enumerate(outputs['aux_outputs']):
                 indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
+                    # if loss == 'masks':
+                    #     # Intermediate masks losses are too costly to compute, we ignore them.
+                    #     continue
                     kwargs = {}
                     if loss == 'labels':
                         # Logging is enabled only for the last layer

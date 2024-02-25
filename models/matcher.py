@@ -49,7 +49,8 @@ class HungarianMatcher(nn.Module):
     """
 
     def __init__(self, cost_class: float = 1, cost_bbox: float = 1, cost_giou: float = 1,
-                       cost_mask: float = 1, cost_dice: float = 1, num_classes: int = 1):
+                       # cost_mask: float = 1, cost_dice: float = 1,
+                       num_classes: int = 1):
         """Creates the matcher
 
         Params:
@@ -63,12 +64,12 @@ class HungarianMatcher(nn.Module):
         self.cost_class = cost_class
         self.cost_bbox = cost_bbox
         self.cost_giou = cost_giou
-        self.cost_mask = cost_mask
-        self.cost_dice = cost_dice
+        # self.cost_mask = cost_mask
+        # self.cost_dice = cost_dice
         self.num_classes = num_classes
-        assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0 \
-            or cost_mask != 0 or cost_dice != 0, "all costs cant be 0"
-        self.mask_out_stride = 4
+        assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0 # \
+            # or cost_mask != 0 or cost_dice != 0, "all costs cant be 0"
+        # self.mask_out_stride = 4
 
     @torch.no_grad()
     def forward(self, outputs, targets):
@@ -83,7 +84,7 @@ class HungarianMatcher(nn.Module):
                  "labels": Tensor of dim [num_frames] (where num_target_boxes is the number of ground-truth
                            objects in the target) containing the class labels
                  "boxes": Tensor of dim [num_frames, 4] containing the target box coordinates
-                 "masks": Tensor of dim [num_frames, h, w], h,w in origin size 
+                 "masks": Tensor of dim [num_frames, h, w], h,w in origin size
         Returns:
             A list of size batch_size, containing tuples of (index_i, index_j) where:
                 - index_i is the indices of the selected predictions (in order)
@@ -91,36 +92,37 @@ class HungarianMatcher(nn.Module):
             For each batch element, it holds:
                 len(index_i) = len(index_j) = min(num_queries, num_target_boxes)
         """
-        src_logits = outputs["pred_logits"] 
-        src_boxes = outputs["pred_boxes"]   
-        src_masks = outputs["pred_masks"]   
+        src_logits = outputs["pred_logits"]
+        src_boxes = outputs["pred_boxes"]
+        # src_masks = outputs["pred_masks"]
 
-        bs, nf, nq, h, w = src_masks.shape 
+        # bs, nf, nq, h, w = src_masks.shape
+        bs, nq, nf = src_logits.shape[:3]
 
         # handle mask padding issue
-        target_masks, valid = nested_tensor_from_tensor_list([t["masks"] for t in targets], 
-                                                             size_divisibility=32,
-                                                             split=False).decompose()
-        target_masks = target_masks.to(src_masks) # [B, T, H, W]
+        # target_masks, valid = nested_tensor_from_tensor_list([t["masks"] for t in targets],
+        #                                                      size_divisibility=32,
+        #                                                      split=False).decompose()
+        # target_masks = target_masks.to(src_masks) # [B, T, H, W]
 
         # downsample ground truth masks with ratio mask_out_stride
-        start = int(self.mask_out_stride // 2)
-        im_h, im_w = target_masks.shape[-2:]
-        
-        target_masks = target_masks[:, :, start::self.mask_out_stride, start::self.mask_out_stride] 
-        assert target_masks.size(2) * self.mask_out_stride == im_h
-        assert target_masks.size(3) * self.mask_out_stride == im_w
+        # start = int(self.mask_out_stride // 2)
+        # im_h, im_w = target_masks.shape[-2:]
+        #
+        # target_masks = target_masks[:, :, start::self.mask_out_stride, start::self.mask_out_stride]
+        # assert target_masks.size(2) * self.mask_out_stride == im_h
+        # assert target_masks.size(3) * self.mask_out_stride == im_w
 
         indices = []
-        for i in range(bs): 
-            out_prob = src_logits[i].sigmoid() 
-            out_bbox = src_boxes[i]            
-            out_mask = src_masks[i]            
+        for i in range(bs):
+            out_prob = src_logits[i].sigmoid()
+            out_bbox = src_boxes[i]
+            # out_mask = src_masks[i]
 
-            tgt_ids = targets[i]["labels"]     
-            tgt_bbox = targets[i]["boxes"]     
-            tgt_mask = target_masks[i]         
-            tgt_valid = targets[i]["valid"]    
+            tgt_ids = targets[i]["labels"]
+            tgt_bbox = targets[i]["boxes"]
+            # tgt_mask = target_masks[i]
+            tgt_valid = targets[i]["valid"]
 
             # class cost
             # we average the cost on valid frames
@@ -129,8 +131,8 @@ class HungarianMatcher(nn.Module):
                 if tgt_valid[t] == 0:
                     continue
 
-                out_prob_split = out_prob[t]    
-                tgt_ids_split = tgt_ids[t].unsqueeze(0)     
+                out_prob_split = out_prob[t]
+                tgt_ids_split = tgt_ids[t].unsqueeze(0)
 
                 # Compute the classification cost.
                 alpha = 0.25
@@ -140,7 +142,7 @@ class HungarianMatcher(nn.Module):
                 if self.num_classes == 1:  # binary referred
                     cost_class_split = pos_cost_class[:, [0]] - neg_cost_class[:, [0]]
                 else:
-                    cost_class_split = pos_cost_class[:, tgt_ids_split] - neg_cost_class[:, tgt_ids_split] 
+                    cost_class_split = pos_cost_class[:, tgt_ids_split] - neg_cost_class[:, tgt_ids_split]
 
                 cost_class.append(cost_class_split)
             cost_class = torch.stack(cost_class, dim=0).mean(0)  # [q, 1]
@@ -149,16 +151,16 @@ class HungarianMatcher(nn.Module):
             # we average the cost on every frame
             cost_bbox, cost_giou = [], []
             for t in range(nf):
-                out_bbox_split = out_bbox[t]    
-                tgt_bbox_split = tgt_bbox[t].unsqueeze(0)  
+                out_bbox_split = out_bbox[t]
+                tgt_bbox_split = tgt_bbox[t].unsqueeze(0)
 
                 # Compute the L1 cost between boxes
-                cost_bbox_split = torch.cdist(out_bbox_split, tgt_bbox_split, p=1)  
+                cost_bbox_split = torch.cdist(out_bbox_split, tgt_bbox_split, p=1)
 
                 # Compute the giou cost betwen boxes
                 cost_giou_split = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox_split),
                                                 box_cxcywh_to_xyxy(tgt_bbox_split))
-                
+
                 cost_bbox.append(cost_bbox_split)
                 cost_giou.append(cost_giou_split)
             cost_bbox = torch.stack(cost_bbox, dim=0).mean(0)
@@ -177,30 +179,30 @@ class HungarianMatcher(nn.Module):
 
             # Only has one tgt, MinCost Matcher
             _, src_ind = torch.min(C, dim=0)
-            tgt_ind = torch.arange(1).to(src_ind)  
+            tgt_ind = torch.arange(1).to(src_ind)
             indices.append((src_ind.long(), tgt_ind.long()))
-            
+
         # list[tuple], length is batch_size
         return indices
-                
+
 
 def build_matcher(args):
     if args.binary:
         num_classes = 1
     else:
         if args.dataset_file == 'ytvos':
-            num_classes = 65 
+            num_classes = 65
         elif args.dataset_file == 'davis':
             num_classes = 78
         elif args.dataset_file == 'a2d' or args.dataset_file == 'jhmdb':
             num_classes = 1
-        else: 
+        else:
             num_classes = 91  # for coco
-    return HungarianMatcher(cost_class=args.set_cost_class, 
-                            cost_bbox=args.set_cost_bbox, 
+    return HungarianMatcher(cost_class=args.set_cost_class,
+                            cost_bbox=args.set_cost_bbox,
                             cost_giou=args.set_cost_giou,
-                            cost_mask=args.set_cost_mask,
-                            cost_dice=args.set_cost_dice,
+                            # cost_mask=args.set_cost_mask,
+                            # cost_dice=args.set_cost_dice,
                             num_classes=num_classes)
 
 

@@ -102,7 +102,7 @@ class YTVOSDataset(Dataset):
 
             video, exp, obj_id, category, frames, frame_id = \
                         meta['video'], meta['exp'], meta['obj_id'], meta['category'], meta['frames'], meta['frame_id']
-            print('video: ', video, ', obj_id: ', obj_id)
+            # print('video: ', video, ', obj_id: ', obj_id)
             # clean up the caption
             exp = " ".join(exp.lower().split())
             category_id = category_dict[category]
@@ -162,7 +162,7 @@ class YTVOSDataset(Dataset):
                             width = int(values[4])
                             height = int(values[5])
                             visibility = values[8]
-                            print(f"Target row: {frame_number}, {object_id}, {left}, {top}, {width}, {height}")
+                            # print(f"Target row: {frame_number}, {object_id}, {left}, {top}, {width}, {height}")
                             if visibility > 0:
                                 box = torch.tensor([left, top, left + width, top + height]).to(torch.float)
                                 valid.append(1)
@@ -190,7 +190,7 @@ class YTVOSDataset(Dataset):
                 labels.append(label)
                 # masks.append(mask)
                 boxes.append(box)
-                print('boxes: ', boxes)
+                # print('boxes: ', boxes)
 
             # transform
             w, h = img.size
