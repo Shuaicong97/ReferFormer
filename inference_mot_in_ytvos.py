@@ -66,23 +66,15 @@ def main(args):
         if not os.path.exists(save_visualize_path_prefix):
             os.makedirs(save_visualize_path_prefix)
 
-    # load data
-    root = Path(args.ytvos_path) # data/ref-youtube-vos
+    # load data split = valid
+    root = Path(args.ytvos_path)
     img_folder = os.path.join(root, split, "JPEGImages")
     meta_file = os.path.join(root, "meta_expressions", split, "meta_expressions.json")
     with open(meta_file, "r") as f:
         data = json.load(f)["videos"]
-    valid_test_videos = set(data.keys())
-    # for some reasons the competition's validation expressions dict contains both the validation (202) & 
-    # test videos (305). so we simply load the test expressions dict and use it to filter out the test videos from
-    # the validation expressions dict:
-    test_meta_file = os.path.join(root, "meta_expressions", "test", "meta_expressions.json")
-    with open(test_meta_file, 'r') as f:
-        test_data = json.load(f)['videos']
-    test_videos = set(test_data.keys())
-    valid_videos = valid_test_videos - test_videos
+    valid_videos = set(data.keys())
     video_list = sorted([video for video in valid_videos])
-    assert len(video_list) == 202, 'error: incorrect number of validation videos'
+    assert len(video_list) == 2, 'error: incorrect number of validation videos'
 
     # create subprocess
     thread_num = args.ngpu

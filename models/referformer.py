@@ -318,23 +318,23 @@ class ReferFormer(nn.Module):
         out['pred_boxes'] = outputs_coord[-1]  # [batch_size, time, num_queries_per_frame, 4]
 
         # Segmentation
-        mask_features = self.pixel_decoder(features, text_features, pos, memory, nf=t) # [batch_size*time, c, out_h, out_w]
-        mask_features = rearrange(mask_features, '(b t) c h w -> b t c h w', b=b, t=t)
+        # mask_features = self.pixel_decoder(features, text_features, pos, memory, nf=t) # [batch_size*time, c, out_h, out_w]
+        # mask_features = rearrange(mask_features, '(b t) c h w -> b t c h w', b=b, t=t)
 
         # dynamic conv
-        outputs_seg_masks = []
-        for lvl in range(hs.shape[0]):
-            dynamic_mask_head_params = self.controller(hs[lvl])   # [batch_size*time, num_queries_per_frame, num_params]
-            dynamic_mask_head_params = rearrange(dynamic_mask_head_params, '(b t) q n -> b (t q) n', b=b, t=t)
-            lvl_references = inter_references[lvl, ..., :2]
-            lvl_references = rearrange(lvl_references, '(b t) q n -> b (t q) n', b=b, t=t)
-            outputs_seg_mask = self.dynamic_mask_with_coords(mask_features, dynamic_mask_head_params, lvl_references, targets)
-            outputs_seg_mask = rearrange(outputs_seg_mask, 'b (t q) h w -> b t q h w', t=t)
-            outputs_seg_masks.append(outputs_seg_mask)
-        out['pred_masks'] = outputs_seg_masks[-1]  # [batch_size, time, num_queries_per_frame, out_h, out_w]
+        # outputs_seg_masks = []
+        # for lvl in range(hs.shape[0]):
+        #     dynamic_mask_head_params = self.controller(hs[lvl])   # [batch_size*time, num_queries_per_frame, num_params]
+        #     dynamic_mask_head_params = rearrange(dynamic_mask_head_params, '(b t) q n -> b (t q) n', b=b, t=t)
+        #     lvl_references = inter_references[lvl, ..., :2]
+        #     lvl_references = rearrange(lvl_references, '(b t) q n -> b (t q) n', b=b, t=t)
+        #     outputs_seg_mask = self.dynamic_mask_with_coords(mask_features, dynamic_mask_head_params, lvl_references, targets)
+        #     outputs_seg_mask = rearrange(outputs_seg_mask, 'b (t q) h w -> b t q h w', t=t)
+        #     outputs_seg_masks.append(outputs_seg_mask)
+        # out['pred_masks'] = outputs_seg_masks[-1]  # [batch_size, time, num_queries_per_frame, out_h, out_w]
 
         if self.aux_loss:
-            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord, outputs_seg_masks)
+            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord) #, outputs_seg_masks)
         
         if not self.training:
             # for visualization
@@ -344,12 +344,12 @@ class ReferFormer(nn.Module):
         return out
 
     @torch.jit.unused
-    def _set_aux_loss(self, outputs_class, outputs_coord, outputs_seg_masks):
+    def _set_aux_loss(self, outputs_class, outputs_coord):
         # this is a workaround to make torchscript happy, as torchscript
         # doesn't support dictionary with non-homogeneous values, such
         # as a dict having both a Tensor and a list.
-        return [{"pred_logits": a, "pred_boxes": b, "pred_masks": c} 
-                for a, b, c in zip(outputs_class[:-1], outputs_coord[:-1], outputs_seg_masks[:-1])]
+        return [{"pred_logits": a, "pred_boxes": b}
+                for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
     def forward_text(self, captions, device):
         if isinstance(captions[0], str):
