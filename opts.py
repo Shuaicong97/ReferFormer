@@ -16,6 +16,8 @@ def get_args_parser():
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
 
+    parser.add_argument('--gpus', default=8, type=int, help="Number of GPUs to use")
+
     # Model parameters
     # load the pretrained weights
     parser.add_argument('--pretrained_weights', type=str, default=None,
