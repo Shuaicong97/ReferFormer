@@ -465,6 +465,8 @@ def init_distributed_mode(args):
         os.environ['LOCAL_RANK'] = str(proc_id % num_gpus)
         os.environ['LOCAL_SIZE'] = str(num_gpus)
         args.dist_url = 'env://'
+        #port = _find_free_port()
+        #args.dist_url = f"tcp://127.0.0.1:{port}"
         args.world_size = ntasks
         args.rank = proc_id
         args.gpu = proc_id % num_gpus
@@ -476,9 +478,8 @@ def init_distributed_mode(args):
     args.distributed = True
 
     torch.cuda.set_device(args.gpu)
-    args.dist_backend = 'nccl'
-    print('| distributed init (rank {}): {}'.format(
-        args.rank, args.dist_url), flush=True)
+    args.dist_backend = 'nccl' if args.debug else 'gloo'
+    print('| distributed init (rank {}): {}'.format(args.rank, args.dist_url), flush=True)
     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
