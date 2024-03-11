@@ -17,6 +17,8 @@ def get_args_parser():
                         help='gradient clipping max norm')
 
     parser.add_argument('--gpus', default=8, type=int, help="Number of GPUs to use")
+    parser.add_argument("--debug", action="store_true",
+                        help="debug (fast) mode, break all loops, do not load all data into memory.")
 
     # Model parameters
     # load the pretrained weights
