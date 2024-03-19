@@ -44,7 +44,7 @@ transform = T.Compose([
     
 
 def main(args):
-    args.masks = True
+    # args.masks = True
     args.batch_size == 1
     print("Inference only supports for batch size = 1") 
 
@@ -76,25 +76,22 @@ def main(args):
     video_list = sorted([video for video in valid_videos])
     assert len(video_list) == 2, 'error: incorrect number of validation videos'
 
-    # create subprocess
-    thread_num = args.ngpu
+    # create subprocess for only 2 valid videos
+    thread_num = 2
     global result_dict
     result_dict = mp.Manager().dict()
 
     processes = []
-    lock = threading.Lock()
-
+    # lock = threading.Lock()
     video_num = len(video_list)
-    per_thread_video_num = video_num // thread_num
+    print(video_num)
+    # per_thread_video_num = video_num // thread_num
 
     start_time = time.time()
     print('Start inference')
     for i in range(thread_num):
-        if i == thread_num - 1:
-            sub_video_list = video_list[i * per_thread_video_num:]
-        else:
-            sub_video_list = video_list[i * per_thread_video_num: (i + 1) * per_thread_video_num]
-        p = mp.Process(target=sub_processor, args=(lock, i, args, data, 
+        sub_video_list = [video_list[i]]  # handle one video per process
+        p = mp.Process(target=sub_processor, args=(i, args, data,
                                                    save_path_prefix, save_visualize_path_prefix, 
                                                    img_folder, sub_video_list))
         p.start()
@@ -113,15 +110,16 @@ def main(args):
 
     print("Total inference time: %.4f s" %(total_time))
 
-def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
+def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
     text = 'processor %d' % pid
-    with lock:
-        progress = tqdm(
-            total=len(video_list),
-            position=pid,
-            desc=text,
-            ncols=0
-        )
+    print(f'Current processing video: {video_list}')
+    # with lock:
+    #     progress = tqdm(
+    #         total=len(video_list),
+    #         position=pid,
+    #         desc=text,
+    #         ncols=0
+    #     )
     torch.cuda.set_device(pid)
 
     # model
@@ -153,10 +151,12 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
     # 1. For each video
     for video in video_list:
+        print(f'{video} is in the loop.')
         metas = [] # list[dict], length is number of expressions
 
-        expressions = data[video]["expressions"]   
-        expression_list = list(expressions.keys()) 
+        expressions = data[video]["expressions"]
+        expression_list = list(expressions.keys())
+        print(f'type of expressions: {type(expressions)}, expressions.keys(): {expression_list}')
         num_expressions = len(expression_list)
         video_len = len(data[video]["frames"])
 
@@ -194,10 +194,10 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
             with torch.no_grad():
                 outputs = model([imgs], [exp], [target])
-            
+
             pred_logits = outputs["pred_logits"][0] 
             pred_boxes = outputs["pred_boxes"][0]   
-            pred_masks = outputs["pred_masks"][0]   
+            # pred_masks = outputs["pred_masks"][0]
             pred_ref_points = outputs["reference_points"][0]  
 
             # according to pred_logits, select the query index
@@ -206,17 +206,17 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             max_scores, _ = pred_scores.max(-1) # [q,]
             _, max_ind = max_scores.max(-1)     # [1,]
             max_inds = max_ind.repeat(video_len)
-            pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
-            pred_masks = pred_masks.unsqueeze(0)
-
-            pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False) 
-            pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy() 
+            # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
+            # pred_masks = pred_masks.unsqueeze(0)
+            #
+            # pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
+            # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
 
             # store the video results
             all_pred_logits = pred_logits[range(video_len), max_inds] 
             all_pred_boxes = pred_boxes[range(video_len), max_inds]   
             all_pred_ref_points = pred_ref_points[range(video_len), max_inds] 
-            all_pred_masks = pred_masks
+            # all_pred_masks = pred_masks
 
             if args.visualize:
                 for t, frame in enumerate(frames):
@@ -237,7 +237,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                     draw_reference_points(draw, ref_points, source_img.size, color=color_list[i%len(color_list)])
 
                     # draw mask
-                    source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i%len(color_list)])
+                    # source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i%len(color_list)])
 
                     # save
                     save_visualize_path_dir = os.path.join(save_visualize_path_prefix, video, str(i))
@@ -251,18 +251,18 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             save_path = os.path.join(save_path_prefix, video_name, exp_id)
             if not os.path.exists(save_path):
                 os.makedirs(save_path)
-            for j in range(video_len):
-                frame_name = frames[j]
-                mask = all_pred_masks[j].astype(np.float32) 
-                mask = Image.fromarray(mask * 255).convert('L')
-                save_file = os.path.join(save_path, frame_name + ".png")
-                mask.save(save_file)
+            # for j in range(video_len):
+            #     frame_name = frames[j]
+            #     mask = all_pred_masks[j].astype(np.float32)
+            #     mask = Image.fromarray(mask * 255).convert('L')
+            #     save_file = os.path.join(save_path, frame_name + ".png")
+            #     mask.save(save_file)
 
-        with lock:
-            progress.update(1)
+        # with lock:
+        #     progress.update(1)
     result_dict[str(pid)] = num_all_frames
-    with lock:
-        progress.close()
+    # with lock:
+    #     progress.close()
 
 
 # visuaize functions
