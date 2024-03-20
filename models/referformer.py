@@ -631,7 +631,6 @@ def build(args):
             focal_alpha=args.focal_alpha)
     criterion.to(device)
 
-    print('two info: ', weight_dict, losses)
     # postprocessors, this is used for coco pretrain but not for rvos
     postprocessors = build_postprocessors(args, args.dataset_file)
     return model, criterion, postprocessors

@@ -25,11 +25,14 @@ import json
 import opts
 from tqdm import tqdm
 
-import multiprocessing as mp
+import torch.multiprocessing as mp
 import threading
 
 from tools.colormap import colormap
 
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+import torch.distributed as dist
 
 # colormap
 color_list = colormap()
@@ -41,9 +44,17 @@ transform = T.Compose([
     T.ToTensor(),
     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
-    
 
-def main(args):
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.destroy_process_group()
+
+def main(rank, world_size, args):
+    setup(rank, world_size)
     # args.masks = True
     args.batch_size == 1
     print("Inference only supports for batch size = 1") 
@@ -89,13 +100,13 @@ def main(args):
 
     start_time = time.time()
     print('Start inference')
-    for i in range(thread_num):
-        sub_video_list = [video_list[i]]  # handle one video per process
-        p = mp.Process(target=sub_processor, args=(i, args, data,
-                                                   save_path_prefix, save_visualize_path_prefix, 
-                                                   img_folder, sub_video_list))
-        p.start()
-        processes.append(p)
+    print(f'rank: {rank}')
+    sub_video_list = [video_list[rank]]  # handle one video per process
+    p = mp.Process(target=sub_processor, args=(rank, args, data,
+                                               save_path_prefix, save_visualize_path_prefix,
+                                            img_folder, sub_video_list))
+    p.start()
+    processes.append(p)
 
     for p in processes:
         p.join()
@@ -109,6 +120,8 @@ def main(args):
         num_all_frames_gpus += num_all_frames
 
     print("Total inference time: %.4f s" %(total_time))
+    cleanup()
+
 
 def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
     text = 'processor %d' % pid
@@ -124,9 +137,11 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
 
     # model
     model, criterion, _ = build_model(args) 
-    device = args.device
-    model.to(device)
 
+    model = FSDP(model)
+
+    device = args.device
+    # model.to(device)
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -315,4 +330,10 @@ def vis_add_mask(img, mask, color):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ReferFormer inference script', parents=[opts.get_args_parser()])
     args = parser.parse_args()
-    main(args)
+
+    WORLD_SIZE = torch.cuda.device_count()
+    mp.spawn(main,
+             args=(WORLD_SIZE, args),
+             nprocs=WORLD_SIZE,
+             join=True)
+
