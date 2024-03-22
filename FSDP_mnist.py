@@ -30,8 +30,13 @@ def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
 
-    # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    # initialize the process group return None
+    a = dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    if a:
+        print(a, 'ds')
+    else:
+        print(a, 'bs')
+
 
 def cleanup():
     dist.destroy_process_group()
@@ -110,9 +115,9 @@ def fsdp_main(rank, world_size, args):
         transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-    dataset1 = datasets.MNIST('data', train=True, download=True,
+    dataset1 = datasets.MNIST('/nfs/data3/shuaicong/wuhu_ReferFormer/data', train=True, download=True,
                         transform=transform)
-    dataset2 = datasets.MNIST('data', train=False,
+    dataset2 = datasets.MNIST('/nfs/data3/shuaicong/wuhu_ReferFormer/data', train=False,
                         transform=transform)
 
     sampler1 = DistributedSampler(dataset1, rank=rank, num_replicas=world_size, shuffle=True)
