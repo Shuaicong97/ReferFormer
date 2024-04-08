@@ -29,7 +29,7 @@ import multiprocessing as mp
 import threading
 
 from tools.colormap import colormap
-
+import math
 
 # colormap
 color_list = colormap()
@@ -181,13 +181,14 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             # store images
             imgs = []
             for t in range(video_len):
-                frame = frames[t]
+                frame = frames[t]  # the t-th frame
+                # /nfs/data3/shuaicong/mot17/valid/JPEGImages/MOT17-13/000001.jpg
                 img_path = os.path.join(img_folder, video_name, frame + ".jpg")
                 img = Image.open(img_path).convert('RGB')
                 origin_w, origin_h = img.size
                 imgs.append(transform(img)) # list[img]
 
-            imgs = torch.stack(imgs, dim=0).to(args.device) # [video_len, 3, h, w]
+            imgs = torch.stack(imgs, dim=0).to(args.device)  # [video_len, 3, h, w]
             img_h, img_w = imgs.shape[-2:]
             size = torch.as_tensor([int(img_h), int(img_w)]).to(args.device)
             target = {"size": size}

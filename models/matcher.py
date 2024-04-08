@@ -194,7 +194,7 @@ def build_matcher(args):
             num_classes = 65
         elif args.dataset_file == 'davis':
             num_classes = 78
-        elif args.dataset_file == 'a2d' or args.dataset_file == 'jhmdb':
+        elif args.dataset_file == 'a2d' or args.dataset_file == 'jhmdb' or args.mot:
             num_classes = 1
         else:
             num_classes = 91  # for coco
