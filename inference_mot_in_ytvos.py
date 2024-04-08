@@ -4,7 +4,6 @@ Modified from DETR (https://github.com/facebookresearch/detr)
 '''
 import argparse
 import json
-import functools
 import random
 import time
 from pathlib import Path
@@ -26,15 +25,9 @@ import json
 import opts
 from tqdm import tqdm
 
-import torch.distributed as dist
-import torch.multiprocessing as mp
-from torch.distributed.fsdp import (FullyShardedDataParallel as FSDP)
+import multiprocessing as mp
 import threading
-from torch.distributed.fsdp.wrap import (
-    size_based_auto_wrap_policy,
-    enable_wrap,
-    wrap,
-)
+
 from tools.colormap import colormap
 import math
 
@@ -49,37 +42,8 @@ transform = T.Compose([
     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-def init_process(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12356'
-    print(f'after: {os.environ}')
 
-    initialized = dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
-    if initialized:
-        print(initialized, 'initialization succeed!')
-    else:
-        print(initialized, 'initialization failed!')
-
-
-def cleanup():
-    try:
-        dist.destroy_process_group()
-        print('successfully destroyed!')
-    except Exception as e:
-        print(f'destroyed failed: {e}')
-
-def main(rank, world_size, args):
-    print(f'start: {rank}')
-    # init_process(rank, world_size)
-
-    # backend = 'gloo'
-    # world_size = torch.distributed.get_world_size()
-    # rank = torch.distributed.get_rank()
-    #
-    # dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-
-    print(f"Rank {rank}/{world_size} is running.")
-
+def main(args):
     # args.masks = True
     args.batch_size == 1
     print("Inference only supports for batch size = 1")
@@ -124,13 +88,13 @@ def main(rank, world_size, args):
 
     start_time = time.time()
     print('Start inference')
-
-    sub_video_list = [video_list[rank]]  # handle one video per process
-    p = mp.Process(target=sub_processor, args=(rank, world_size, args, data,
+    for i in range(thread_num):
+        sub_video_list = [video_list[i]]  # handle one video per process
+        p = mp.Process(target=sub_processor, args=(i, args, data,
                                                    save_path_prefix, save_visualize_path_prefix,
                                                    img_folder, sub_video_list))
-    p.start()
-    processes.append(p)
+        p.start()
+        processes.append(p)
 
     for p in processes:
         p.join()
@@ -145,12 +109,8 @@ def main(rank, world_size, args):
 
     print("Total inference time: %.4f s" %(total_time))
 
-    # cleanup()
-
-
-def sub_processor(rank, world_size, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
-    init_process(rank, world_size)
-    text = 'processor %d' % rank
+def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
+    text = 'processor %d' % pid
     print(f'Current processing video: {video_list}')
     # with lock:
     #     progress = tqdm(
@@ -159,23 +119,17 @@ def sub_processor(rank, world_size, args, data, save_path_prefix, save_visualize
     #         desc=text,
     #         ncols=0
     #     )
-
-    my_auto_wrap_policy = functools.partial(
-        size_based_auto_wrap_policy, min_num_params=100
-    )
-    torch.cuda.set_device(rank)
+    torch.cuda.set_device(pid)
 
     # model
     model, criterion, _ = build_model(args)
     device = args.device
-    # model = model.to(rank)
-
-    model = FSDP(model, auto_wrap_policy=my_auto_wrap_policy)
+    model.to(device)
 
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    if rank == 0:
+    if pid == 0:
         print('number of params:', n_parameters)
 
     if args.resume:
@@ -187,7 +141,7 @@ def sub_processor(rank, world_size, args, data, save_path_prefix, save_visualize
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
     else:
-    	raise ValueError('Please specify the checkpoint for inference.')
+        raise ValueError('Please specify the checkpoint for inference.')
 
 
     # start inference
@@ -231,7 +185,7 @@ def sub_processor(rank, world_size, args, data, save_path_prefix, save_visualize
                 img_path = os.path.join(img_folder, video_name, frame + ".jpg")
                 img = Image.open(img_path).convert('RGB')
                 origin_w, origin_h = img.size
-                imgs.append(transform(img)) # list[img]
+                imgs.append(transform(img))  # list[img]
 
             imgs = torch.stack(imgs, dim=0).to(args.device)  # [video_len, 3, h, w]
             img_h, img_w = imgs.shape[-2:]
@@ -306,11 +260,9 @@ def sub_processor(rank, world_size, args, data, save_path_prefix, save_visualize
 
         # with lock:
         #     progress.update(1)
-    result_dict[str(rank)] = num_all_frames
+    result_dict[str(pid)] = num_all_frames
     # with lock:
     #     progress.close()
-
-    cleanup()
 
 
 # visuaize functions
@@ -363,9 +315,4 @@ def vis_add_mask(img, mask, color):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ReferFormer inference script', parents=[opts.get_args_parser()])
     args = parser.parse_args()
-
-    WORLD_SIZE = torch.cuda.device_count()
-    mp.spawn(main,
-             args=(WORLD_SIZE, args),
-             nprocs=WORLD_SIZE,
-             join=True)
+    main(args)
