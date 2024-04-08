@@ -4,6 +4,7 @@ Modified from DETR (https://github.com/facebookresearch/detr)
 '''
 import argparse
 import json
+import functools
 import random
 import time
 from pathlib import Path
@@ -25,9 +26,15 @@ import json
 import opts
 from tqdm import tqdm
 
-import multiprocessing as mp
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.distributed.fsdp import (FullyShardedDataParallel as FSDP)
 import threading
-
+from torch.distributed.fsdp.wrap import (
+    size_based_auto_wrap_policy,
+    enable_wrap,
+    wrap,
+)
 from tools.colormap import colormap
 import math
 
@@ -41,12 +48,41 @@ transform = T.Compose([
     T.ToTensor(),
     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
-    
 
-def main(args):
+def init_process(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12356'
+    print(f'after: {os.environ}')
+
+    initialized = dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
+    if initialized:
+        print(initialized, 'initialization succeed!')
+    else:
+        print(initialized, 'initialization failed!')
+
+
+def cleanup():
+    try:
+        dist.destroy_process_group()
+        print('successfully destroyed!')
+    except Exception as e:
+        print(f'destroyed failed: {e}')
+
+def main(rank, world_size, args):
+    print(f'start: {rank}')
+    # init_process(rank, world_size)
+
+    # backend = 'gloo'
+    # world_size = torch.distributed.get_world_size()
+    # rank = torch.distributed.get_rank()
+    #
+    # dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+    print(f"Rank {rank}/{world_size} is running.")
+
     # args.masks = True
     args.batch_size == 1
-    print("Inference only supports for batch size = 1") 
+    print("Inference only supports for batch size = 1")
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -84,18 +120,17 @@ def main(args):
     processes = []
     # lock = threading.Lock()
     video_num = len(video_list)
-    print(video_num)
     # per_thread_video_num = video_num // thread_num
 
     start_time = time.time()
     print('Start inference')
-    for i in range(thread_num):
-        sub_video_list = [video_list[i]]  # handle one video per process
-        p = mp.Process(target=sub_processor, args=(i, args, data,
-                                                   save_path_prefix, save_visualize_path_prefix, 
+
+    sub_video_list = [video_list[rank]]  # handle one video per process
+    p = mp.Process(target=sub_processor, args=(rank, world_size, args, data,
+                                                   save_path_prefix, save_visualize_path_prefix,
                                                    img_folder, sub_video_list))
-        p.start()
-        processes.append(p)
+    p.start()
+    processes.append(p)
 
     for p in processes:
         p.join()
@@ -110,8 +145,12 @@ def main(args):
 
     print("Total inference time: %.4f s" %(total_time))
 
-def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
-    text = 'processor %d' % pid
+    # cleanup()
+
+
+def sub_processor(rank, world_size, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
+    init_process(rank, world_size)
+    text = 'processor %d' % rank
     print(f'Current processing video: {video_list}')
     # with lock:
     #     progress = tqdm(
@@ -120,17 +159,23 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
     #         desc=text,
     #         ncols=0
     #     )
-    torch.cuda.set_device(pid)
+
+    my_auto_wrap_policy = functools.partial(
+        size_based_auto_wrap_policy, min_num_params=100
+    )
+    torch.cuda.set_device(rank)
 
     # model
-    model, criterion, _ = build_model(args) 
+    model, criterion, _ = build_model(args)
     device = args.device
-    model.to(device)
+    # model = model.to(rank)
+
+    model = FSDP(model, auto_wrap_policy=my_auto_wrap_policy)
 
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    if pid == 0:
+    if rank == 0:
         print('number of params:', n_parameters)
 
     if args.resume:
@@ -146,7 +191,7 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
 
 
     # start inference
-    num_all_frames = 0 
+    num_all_frames = 0
     model.eval()
 
     # 1. For each video
@@ -196,10 +241,10 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             with torch.no_grad():
                 outputs = model([imgs], [exp], [target])
 
-            pred_logits = outputs["pred_logits"][0] 
-            pred_boxes = outputs["pred_boxes"][0]   
+            pred_logits = outputs["pred_logits"][0]
+            pred_boxes = outputs["pred_boxes"][0]
             # pred_masks = outputs["pred_masks"][0]
-            pred_ref_points = outputs["reference_points"][0]  
+            pred_ref_points = outputs["reference_points"][0]
 
             # according to pred_logits, select the query index
             pred_scores = pred_logits.sigmoid() # [t, q, k]
@@ -214,9 +259,9 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
 
             # store the video results
-            all_pred_logits = pred_logits[range(video_len), max_inds] 
-            all_pred_boxes = pred_boxes[range(video_len), max_inds]   
-            all_pred_ref_points = pred_ref_points[range(video_len), max_inds] 
+            all_pred_logits = pred_logits[range(video_len), max_inds]
+            all_pred_boxes = pred_boxes[range(video_len), max_inds]
+            all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
             # all_pred_masks = pred_masks
 
             if args.visualize:
@@ -226,7 +271,7 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                     source_img = Image.open(img_path).convert('RGBA') # PIL image
 
                     draw = ImageDraw.Draw(source_img)
-                    draw_boxes = all_pred_boxes[t].unsqueeze(0) 
+                    draw_boxes = all_pred_boxes[t].unsqueeze(0)
                     draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
 
                     # draw boxes
@@ -234,7 +279,7 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                     draw.rectangle(((xmin, ymin), (xmax, ymax)), outline=tuple(color_list[i%len(color_list)]), width=2)
 
                     # draw reference point
-                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist() 
+                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
                     draw_reference_points(draw, ref_points, source_img.size, color=color_list[i%len(color_list)])
 
                     # draw mask
@@ -261,9 +306,11 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
 
         # with lock:
         #     progress.update(1)
-    result_dict[str(pid)] = num_all_frames
+    result_dict[str(rank)] = num_all_frames
     # with lock:
     #     progress.close()
+
+    cleanup()
 
 
 # visuaize functions
@@ -297,7 +344,7 @@ def draw_sample_points(draw, sample_points, img_size, color_list):
             x, y = sample
             cur_color = color_list[i % len(color_list)][::-1]
             cur_color += [alpha]
-            draw.ellipse((x-2, y-2, x+2, y+2), 
+            draw.ellipse((x-2, y-2, x+2, y+2),
                             fill=tuple(cur_color), outline=tuple(cur_color), width=1)
 
 def vis_add_mask(img, mask, color):
@@ -311,9 +358,14 @@ def vis_add_mask(img, mask, color):
     origin_img = Image.fromarray(origin_img)
     return origin_img
 
-  
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ReferFormer inference script', parents=[opts.get_args_parser()])
     args = parser.parse_args()
-    main(args)
+
+    WORLD_SIZE = torch.cuda.device_count()
+    mp.spawn(main,
+             args=(WORLD_SIZE, args),
+             nprocs=WORLD_SIZE,
+             join=True)
