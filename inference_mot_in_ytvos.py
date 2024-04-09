@@ -192,32 +192,98 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             size = torch.as_tensor([int(img_h), int(img_w)]).to(args.device)
             target = {"size": size}
 
-            with torch.no_grad():
-                outputs = model([imgs], [exp], [target])
+            batch_size = 10
+            total_images = len(imgs)
+            num_batches = math.ceil(total_images / batch_size)
+            print(f'num_batches: {num_batches}')
 
-            pred_logits = outputs["pred_logits"][0]
-            pred_boxes = outputs["pred_boxes"][0]
-            # pred_masks = outputs["pred_masks"][0]
-            pred_ref_points = outputs["reference_points"][0]
+            all_pred_logits = []
+            all_pred_boxes = []
+            all_pred_ref_points = []
 
-            # according to pred_logits, select the query index
-            pred_scores = pred_logits.sigmoid() # [t, q, k]
-            pred_scores = pred_scores.mean(0)   # [q, k]
-            max_scores, _ = pred_scores.max(-1) # [q,]
-            _, max_ind = max_scores.max(-1)     # [1,]
-            max_inds = max_ind.repeat(video_len)
-            # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
-            # pred_masks = pred_masks.unsqueeze(0)
-            #
-            # pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
-            # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
+            for batch_index in range(num_batches):
+                start_idx = batch_index * batch_size
+                end_idx = min((batch_index + 1) * batch_size, total_images)
+                batch_imgs = imgs[start_idx:end_idx]
 
-            # store the video results
-            all_pred_logits = pred_logits[range(video_len), max_inds]
-            all_pred_boxes = pred_boxes[range(video_len), max_inds]
-            all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
-            # all_pred_masks = pred_masks
+                with torch.no_grad():
+                    outputs = model([batch_imgs], [exp], [target])
 
+                pred_logits = outputs["pred_logits"][0]
+                pred_boxes = outputs["pred_boxes"][0]
+                # pred_masks = outputs["pred_masks"][0]
+                pred_ref_points = outputs["reference_points"][0]
+
+                # according to pred_logits, select the query index
+                pred_scores = pred_logits.sigmoid() # [t, q, k]
+                pred_scores = pred_scores.mean(0)   # [q, k]
+                max_scores, _ = pred_scores.max(-1) # [q,]
+                _, max_ind = max_scores.max(-1)     # [1,]
+                max_inds = max_ind.repeat(batch_size)
+                # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
+                # pred_masks = pred_masks.unsqueeze(0)
+                #
+                # pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
+                # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
+
+                # store the video results
+                all_pred_logits.extend(pred_logits[range(end_idx - start_idx), max_inds])
+                all_pred_boxes.extend(pred_boxes[range(end_idx - start_idx), max_inds])
+                all_pred_ref_points.extend(pred_ref_points[range(end_idx - start_idx), max_inds])
+                # all_pred_masks.extend(pred_masks)
+
+                # values with all frames (750/900 frames)
+                # all_pred_logits = pred_logits[range(video_len), max_inds]
+                # all_pred_boxes = pred_boxes[range(video_len), max_inds]
+                # all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
+                # all_pred_masks = pred_masks
+
+            # Convert lists to tensors
+            all_pred_logits = torch.stack(all_pred_logits)
+            all_pred_boxes = torch.stack(all_pred_boxes)  # Tensor (750,4 )
+            all_pred_ref_points = torch.stack(all_pred_ref_points)  # Tensor (750, 1)
+            # all_pred_masks = torch.stack(all_pred_masks)
+
+            save_path_all_pred_boxes = os.path.join(save_path_prefix, video_name, 'all_pred_boxes')
+            if not os.path.exists(save_path_all_pred_boxes):
+                os.makedirs(save_path_all_pred_boxes)
+
+            save_path_all_pred_ref_points = os.path.join(save_path_prefix, video_name, 'all_pred_ref_points')
+            if not os.path.exists(save_path_all_pred_ref_points):
+                os.makedirs(save_path_all_pred_ref_points)
+
+            save_boxes_path = os.path.join(save_path_all_pred_boxes, f"all_pred_boxes_for_exp_{i}.txt")
+            save_ref_points_path = os.path.join(save_path_all_pred_ref_points, f"all_pred_ref_points_for_exp_{i}.txt")
+
+
+            with open(save_boxes_path, "w") as f:
+                for t, frame in enumerate(frames):
+                    draw_boxes = all_pred_boxes[t].unsqueeze(0)
+                    draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
+                    xmin, ymin, xmax, ymax = draw_boxes[0]
+                    box_str = f"{xmin} {ymin} {xmax} {ymax}"
+                    f.write(box_str + "\n")
+                # for box in all_pred_boxes:
+                #     box_str = " ".join(map(str, box.tolist()))
+                #     f.write(box_str + "\n")
+            with open(save_ref_points_path, "w") as f:
+                for t, frame in enumerate(frames):
+                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
+                    ref_points_str = json.dumps(ref_points) + "\n"
+                    f.write(ref_points_str)
+
+                # for ref_point in all_pred_ref_points:
+                #     ref_point_str = " ".join(map(str, ref_point.tolist()))
+                #     f.write(ref_point_str + "\n")
+
+            # if video_name == 'MOT17-13':
+            #     for t in range(10):
+            #         draw_boxes = all_pred_boxes[t].unsqueeze(0)
+            #         draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
+            #         xmin, ymin, xmax, ymax = draw_boxes[0]
+            #         print(t, ':', xmin, ymin, xmax, ymax)
+
+            # Only save bbox information into txt files, not draw on the images.
             if args.visualize:
                 for t, frame in enumerate(frames):
                     # original
@@ -309,7 +375,6 @@ def vis_add_mask(img, mask, color):
     origin_img[mask] = origin_img[mask] * 0.5 + color * 0.5
     origin_img = Image.fromarray(origin_img)
     return origin_img
-
 
 
 if __name__ == '__main__':
