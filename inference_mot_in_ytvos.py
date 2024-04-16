@@ -281,7 +281,8 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             #         draw_boxes = all_pred_boxes[t].unsqueeze(0)
             #         draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
             #         xmin, ymin, xmax, ymax = draw_boxes[0]
-            #         print(t, ':', xmin, ymin, xmax, ymax)
+            #         box_str = f"{xmin} {ymin} {xmax} {ymax}"
+            #         f.write(box_str + "\n")
 
             # Only save bbox information into txt files, not draw on the images.
             if args.visualize:
@@ -314,9 +315,9 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
 
 
             # save binary image
-            save_path = os.path.join(save_path_prefix, video_name, exp_id)
-            if not os.path.exists(save_path):
-                os.makedirs(save_path)
+            # save_path = os.path.join(save_path_prefix, video_name, exp_id)
+            # if not os.path.exists(save_path):
+            #     os.makedirs(save_path)
             # for j in range(video_len):
             #     frame_name = frames[j]
             #     mask = all_pred_masks[j].astype(np.float32)
