@@ -23,5 +23,5 @@ main.py --with_box_refine --binary --freeze_text_encoder \
 # test
 CHECKPOINT=${OUTPUT_DIR}/checkpoint.pth
 python3 inference_mot_in_ytvos.py --with_box_refine --binary --freeze_text_encoder --gpus=${GPUS} \
---resume=${CHECKPOINT}  ${PY_ARGS}
+--resume=${CHECKPOINT} --output_dir=${OUTPUT_DIR} ${PY_ARGS}
 

@@ -161,15 +161,13 @@ class YTVOSDataset(Dataset):
                             top = int(values[3])
                             width = int(values[4])
                             height = int(values[5])
-                            visibility = values[8]
                             # print(f"Target row: {frame_number}, {object_id}, {left}, {top}, {width}, {height}")
-                            if visibility > 0:
-                                box = torch.tensor([left, top, left + width, top + height]).to(torch.float)
-                                valid.append(1)
-                            else:
-                                box = torch.tensor([0, 0, 0, 0]).to(torch.float)
-                                valid.append(0)
-                            break
+                            box = torch.tensor([left, top, left + width, top + height]).to(torch.float)
+                            valid.append(1)
+                        # else:
+                        #     print('not equal')
+                        #     box = torch.tensor([0, 0, 0, 0]).to(torch.float)
+                        #     valid.append(0)
 
                 # create the target
                 label = torch.tensor(category_id)
