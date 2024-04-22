@@ -151,6 +151,7 @@ class YTVOSDataset(Dataset):
                 # mask = Image.open(mask_path).convert('P')
 
                 box = torch.zeros(4).to(torch.float)
+                flag = False
                 with open(gt_path, 'r') as file:
                     for line in file:
                         values = list(map(float, line.strip().split(',')))
@@ -164,10 +165,15 @@ class YTVOSDataset(Dataset):
                             # print(f"Target row: {frame_number}, {object_id}, {left}, {top}, {width}, {height}")
                             box = torch.tensor([left, top, left + width, top + height]).to(torch.float)
                             valid.append(1)
+                            flag = True
                         # else:
                         #     print('not equal')
                         #     box = torch.tensor([0, 0, 0, 0]).to(torch.float)
                         #     valid.append(0)
+                if not flag:
+                    box = torch.tensor([0, 0, 0, 0]).to(torch.float)
+                    valid.append(0)
+                    # print(f'No matching box: {box}, {flag}')
 
                 # create the target
                 label = torch.tensor(category_id)
@@ -188,7 +194,6 @@ class YTVOSDataset(Dataset):
                 labels.append(label)
                 # masks.append(mask)
                 boxes.append(box)
-                # print('boxes: ', boxes)
 
             # transform
             w, h = img.size
