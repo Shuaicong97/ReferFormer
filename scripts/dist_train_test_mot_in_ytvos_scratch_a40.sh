@@ -1,4 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/bash -l
+
+#SBATCH --job-name=train_with_mot17
+#SBATCH --time=24:00:00
+#SBATCH --gres=gpu:a40:8
+#SBATCH --output=/home/atuin/v100dd/v100dd19/sbatch/result-%x-%j.txt
+
 set -x
 
 OUTPUT_DIR=$1
@@ -16,11 +22,12 @@ CPUS_PER_TASK=${CPUS_PER_TASK:-5}
 
 # train
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
-python3 -m torch.distributed.launch --nproc_per_node=${GPUS_PER_NODE} --master_port=${PORT} --use_env \
+srun python3 -m torch.distributed.launch --nproc_per_node=${GPUS_PER_NODE} --master_port=${PORT} --use_env \
 main.py --with_box_refine --binary --freeze_text_encoder \
 --output_dir=${OUTPUT_DIR} --gpus=${GPUS} ${PY_ARGS}
 
 # test
 CHECKPOINT=${OUTPUT_DIR}/checkpoint.pth
-python3 inference_mot_in_ytvos.py --with_box_refine --binary --freeze_text_encoder --gpus=${GPUS} \
+srun python3 inference_mot_in_ytvos.py --with_box_refine --binary --freeze_text_encoder --gpus=${GPUS} \
 --resume=${CHECKPOINT} --output_dir=${OUTPUT_DIR} ${PY_ARGS}
+
