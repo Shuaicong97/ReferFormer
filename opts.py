@@ -19,6 +19,7 @@ def get_args_parser():
     parser.add_argument('--gpus', default=8, type=int, help="Number of GPUs to use")
     parser.add_argument("--debug", action="store_true",
                         help="debug (fast) mode, break all loops, do not load all data into memory.")
+    parser.add_argument('--window_size', default=10, type=int, help="Frame-Window size for inference")
 
     # Model parameters
     # load the pretrained weights

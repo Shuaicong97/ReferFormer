@@ -192,18 +192,18 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             size = torch.as_tensor([int(img_h), int(img_w)]).to(args.device)
             target = {"size": size}
 
-            batch_size = 10
             total_images = len(imgs)
-            num_batches = math.ceil(total_images / batch_size)
-            print(f'num_batches: {num_batches}')
+            assert total_images > 0, total_images
+            num_windows = math.ceil(total_images / (args.window_size // 2)) - 1
+            window_idx = list(range(num_windows))
 
             all_pred_logits = []
             all_pred_boxes = []
             all_pred_ref_points = []
 
-            for batch_index in range(num_batches):
-                start_idx = batch_index * batch_size
-                end_idx = min((batch_index + 1) * batch_size, total_images)
+            for idx in window_idx:
+                start_idx = max(idx * args.window_size // 2, 0)
+                end_idx = min(idx * args.window_size // 2 + args.window_size, total_images - 1)
                 batch_imgs = imgs[start_idx:end_idx]
 
                 with torch.no_grad():
@@ -217,9 +217,10 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                 # according to pred_logits, select the query index
                 pred_scores = pred_logits.sigmoid() # [t, q, k]
                 pred_scores = pred_scores.mean(0)   # [q, k]
-                max_scores, _ = pred_scores.max(-1) # [q,]
+                # TODO: need to change it to multiple objects
+                max_scores, _ = pred_scores.max(-1) # [q,] TO choose the top (only) 1 matching object
                 _, max_ind = max_scores.max(-1)     # [1,]
-                max_inds = max_ind.repeat(batch_size)
+                max_inds = max_ind.repeat(args.window_size)
                 # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
                 # pred_masks = pred_masks.unsqueeze(0)
                 #
