@@ -204,10 +204,10 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             for idx in window_idx:
                 start_idx = max(idx * args.window_size // 2, 0)
                 end_idx = min(idx * args.window_size // 2 + args.window_size, total_images - 1)
-                batch_imgs = imgs[start_idx:end_idx]
+                chosen_imgs = imgs[start_idx:end_idx]
 
                 with torch.no_grad():
-                    outputs = model([batch_imgs], [exp], [target])
+                    outputs = model([chosen_imgs], [exp], [target])
 
                 pred_logits = outputs["pred_logits"][0]
                 pred_boxes = outputs["pred_boxes"][0]
@@ -220,7 +220,8 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                 # TODO: need to change it to multiple objects
                 max_scores, _ = pred_scores.max(-1) # [q,] TO choose the top (only) 1 matching object
                 _, max_ind = max_scores.max(-1)     # [1,]
-                max_inds = max_ind.repeat(args.window_size)
+                repeat_size = end_idx - start_idx
+                max_inds = max_ind.repeat(repeat_size)
                 # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
                 # pred_masks = pred_masks.unsqueeze(0)
                 #
@@ -325,7 +326,9 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             #     mask = Image.fromarray(mask * 255).convert('L')
             #     save_file = os.path.join(save_path, frame_name + ".png")
             #     mask.save(save_file)
+            print(f'{i}th expression in {video_name}: {exp}')
 
+        print('finish 2 expression loop')
         # with lock:
         #     progress.update(1)
     result_dict[str(pid)] = num_all_frames
