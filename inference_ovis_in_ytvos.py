@@ -29,7 +29,7 @@ import multiprocessing as mp
 import threading
 
 from tools.colormap import colormap
-import math
+
 
 # colormap
 color_list = colormap()
@@ -41,12 +41,12 @@ transform = T.Compose([
     T.ToTensor(),
     T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
-
+    
 
 def main(args):
     # args.masks = True
     args.batch_size == 1
-    print("Inference only supports for batch size = 1")
+    print("Inference only supports for batch size = 1") 
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -66,7 +66,7 @@ def main(args):
         if not os.path.exists(save_visualize_path_prefix):
             os.makedirs(save_visualize_path_prefix)
 
-    # load data split = valid
+    # load data
     root = Path(args.ytvos_path)
     img_folder = os.path.join(root, split, "JPEGImages")
     meta_file = os.path.join(root, "meta_expressions", split, "meta_expressions.json")
@@ -74,24 +74,28 @@ def main(args):
         data = json.load(f)["videos"]
     valid_videos = set(data.keys())
     video_list = sorted([video for video in valid_videos])
-    assert len(video_list) == 2, 'error: incorrect number of validation videos'
+    print(f'len(video_list): {len(video_list)}')
 
-    # create subprocess for only 2 valid videos
-    thread_num = 2
+    # create subprocess
+    thread_num = args.ngpu
     global result_dict
     result_dict = mp.Manager().dict()
 
     processes = []
-    # lock = threading.Lock()
+    lock = threading.Lock()
+
     video_num = len(video_list)
-    # per_thread_video_num = video_num // thread_num
+    per_thread_video_num = video_num // thread_num
 
     start_time = time.time()
     print('Start inference')
     for i in range(thread_num):
-        sub_video_list = [video_list[i]]  # handle one video per process
-        p = mp.Process(target=sub_processor, args=(i, args, data,
-                                                   save_path_prefix, save_visualize_path_prefix,
+        if i == thread_num - 1:
+            sub_video_list = video_list[i * per_thread_video_num:]
+        else:
+            sub_video_list = video_list[i * per_thread_video_num: (i + 1) * per_thread_video_num]
+        p = mp.Process(target=sub_processor, args=(lock, i, args, data, 
+                                                   save_path_prefix, save_visualize_path_prefix, 
                                                    img_folder, sub_video_list))
         p.start()
         processes.append(p)
@@ -109,20 +113,19 @@ def main(args):
 
     print("Total inference time: %.4f s" %(total_time))
 
-def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
+def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
     text = 'processor %d' % pid
-    print(f'Current processing video: {video_list}')
-    # with lock:
-    #     progress = tqdm(
-    #         total=len(video_list),
-    #         position=pid,
-    #         desc=text,
-    #         ncols=0
-    #     )
+    with lock:
+        progress = tqdm(
+            total=len(video_list),
+            position=pid,
+            desc=text,
+            ncols=0
+        )
     torch.cuda.set_device(pid)
 
     # model
-    model, criterion, _ = build_model(args)
+    model, criterion, _ = build_model(args) 
     device = args.device
     model.to(device)
 
@@ -141,21 +144,19 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
     else:
-        raise ValueError('Please specify the checkpoint for inference.')
+    	raise ValueError('Please specify the checkpoint for inference.')
 
 
     # start inference
-    num_all_frames = 0
+    num_all_frames = 0 
     model.eval()
 
     # 1. For each video
     for video in video_list:
-        print(f'{video} is in the loop.')
         metas = [] # list[dict], length is number of expressions
 
-        expressions = data[video]["expressions"]
-        expression_list = list(expressions.keys())
-        print(f'type of expressions: {type(expressions)}, expressions.keys(): {expression_list}')
+        expressions = data[video]["expressions"]   
+        expression_list = list(expressions.keys()) 
         num_expressions = len(expression_list)
         video_len = len(data[video]["frames"])
 
@@ -180,87 +181,48 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             # store images
             imgs = []
             for t in range(video_len):
-                frame = frames[t]  # the t-th frame
-                # /nfs/data3/shuaicong/mot17/valid/JPEGImages/MOT17-13/000001.jpg
+                frame = frames[t]
                 img_path = os.path.join(img_folder, video_name, frame + ".jpg")
                 img = Image.open(img_path).convert('RGB')
                 origin_w, origin_h = img.size
-                imgs.append(transform(img))  # list[img]
+                imgs.append(transform(img)) # list[img]
 
-            imgs = torch.stack(imgs, dim=0).to(args.device)  # [video_len, 3, h, w]
+            imgs = torch.stack(imgs, dim=0).to(args.device) # [video_len, 3, h, w]
             img_h, img_w = imgs.shape[-2:]
             size = torch.as_tensor([int(img_h), int(img_w)]).to(args.device)
             target = {"size": size}
 
-            total_images = len(imgs)
-            assert total_images > 0, total_images
-            num_windows = math.ceil(total_images / (args.window_size // 2)) - 1
-            window_idx = list(range(num_windows))
+            with torch.no_grad():
+                outputs = model([imgs], [exp], [target])
+            
+            pred_logits = outputs["pred_logits"][0] 
+            pred_boxes = outputs["pred_boxes"][0]   
+            # pred_masks = outputs["pred_masks"][0]
+            pred_ref_points = outputs["reference_points"][0]  
 
-            all_pred_logits = []
-            all_pred_boxes = []
-            all_pred_ref_points = []
+            # according to pred_logits, select the query index
+            pred_scores = pred_logits.sigmoid() # [t, q, k]
+            pred_scores = pred_scores.mean(0)   # [q, k]
+            max_scores, _ = pred_scores.max(-1) # [q,]
+            _, max_ind = max_scores.max(-1)     # [1,]
+            max_inds = max_ind.repeat(video_len)
+            # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
+            # pred_masks = pred_masks.unsqueeze(0)
 
-            for idx in window_idx:
-                start_idx = max(idx * args.window_size // 2, 0)
-                end_idx = min(idx * args.window_size // 2 + args.window_size, total_images - 1)
-                chosen_imgs = imgs[start_idx:end_idx]
+            # pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
+            # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
 
-                with torch.no_grad():
-                    outputs = model([chosen_imgs], [exp], [target])
-
-                pred_logits = outputs["pred_logits"][0]
-                pred_boxes = outputs["pred_boxes"][0]
-                print('Boxes info: ', type(pred_boxes), pred_boxes.shape, len(pred_boxes))
-                # pred_masks = outputs["pred_masks"][0]
-                pred_ref_points = outputs["reference_points"][0]
-
-                # according to pred_logits, select the query index
-                pred_scores = pred_logits.sigmoid() # [t, q, k]
-                pred_scores = pred_scores.mean(0)   # [q, k] [5, 1]
-                # TODO: need to change it to multiple objects
-                # topK?
-                max_scores, _ = pred_scores.max(-1) # [q,] TO choose the top (only) 1 matching object
-                _, max_ind = max_scores.max(-1)     # [1,]
-                repeat_size = end_idx - start_idx
-                max_inds = max_ind.repeat(repeat_size)
-                # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
-                # pred_masks = pred_masks.unsqueeze(0)
-                #
-                # pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
-                # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
-
-                # store the video results
-                all_pred_logits.extend(pred_logits[range(end_idx - start_idx), max_inds])
-                all_pred_boxes.extend(pred_boxes[range(end_idx - start_idx), max_inds])
-                all_pred_ref_points.extend(pred_ref_points[range(end_idx - start_idx), max_inds])
-                # all_pred_masks.extend(pred_masks)
-                print('all_pred_boxes info: ', type(all_pred_boxes), len(all_pred_boxes))
-
-                # values with all frames (750/900 frames)
-                # all_pred_logits = pred_logits[range(video_len), max_inds]
-                # all_pred_boxes = pred_boxes[range(video_len), max_inds]
-                # all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
-                # all_pred_masks = pred_masks
-
-            # Convert lists to tensors
-            all_pred_logits = torch.stack(all_pred_logits)
-            all_pred_boxes = torch.stack(all_pred_boxes)  # Tensor (750,4 )
-            all_pred_ref_points = torch.stack(all_pred_ref_points)  # Tensor (750, 1)
-            # all_pred_masks = torch.stack(all_pred_masks)
+            # store the video results
+            all_pred_logits = pred_logits[range(video_len), max_inds] 
+            all_pred_boxes = pred_boxes[range(video_len), max_inds]   
+            all_pred_ref_points = pred_ref_points[range(video_len), max_inds] 
+            # all_pred_masks = pred_masks
 
             save_path_all_pred_boxes = os.path.join(save_path_prefix, video_name, 'all_pred_boxes')
             if not os.path.exists(save_path_all_pred_boxes):
                 os.makedirs(save_path_all_pred_boxes)
 
-            save_path_all_pred_ref_points = os.path.join(save_path_prefix, video_name, 'all_pred_ref_points')
-            if not os.path.exists(save_path_all_pred_ref_points):
-                os.makedirs(save_path_all_pred_ref_points)
-
             save_boxes_path = os.path.join(save_path_all_pred_boxes, f"all_pred_boxes_for_exp_{i}.txt")
-            save_ref_points_path = os.path.join(save_path_all_pred_ref_points, f"all_pred_ref_points_for_exp_{i}.txt")
-
-
             with open(save_boxes_path, "w") as f:
                 f.write(f'Bounding Boxes Information for Expression {exp_id} - {exp}:\n')
                 f.write('frame_nr   xmin   ymin    xmax    ymax\n')
@@ -270,28 +232,7 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                     xmin, ymin, xmax, ymax = draw_boxes[0]
                     box_str = f"{xmin} {ymin} {xmax} {ymax}"
                     f.write(box_str + "\n")
-                # for box in all_pred_boxes:
-                #     box_str = " ".join(map(str, box.tolist()))
-                #     f.write(box_str + "\n")
-            with open(save_ref_points_path, "w") as f:
-                for t, frame in enumerate(frames):
-                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
-                    ref_points_str = json.dumps(ref_points) + "\n"
-                    f.write(ref_points_str)
 
-                # for ref_point in all_pred_ref_points:
-                #     ref_point_str = " ".join(map(str, ref_point.tolist()))
-                #     f.write(ref_point_str + "\n")
-
-            # if video_name == 'MOT17-13':
-            #     for t in range(10):
-            #         draw_boxes = all_pred_boxes[t].unsqueeze(0)
-            #         draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
-            #         xmin, ymin, xmax, ymax = draw_boxes[0]
-            #         box_str = f"{xmin} {ymin} {xmax} {ymax}"
-            #         f.write(box_str + "\n")
-
-            # Only save bbox information into txt files, not draw on the images.
             if args.visualize:
                 for t, frame in enumerate(frames):
                     # original
@@ -299,7 +240,7 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                     source_img = Image.open(img_path).convert('RGBA') # PIL image
 
                     draw = ImageDraw.Draw(source_img)
-                    draw_boxes = all_pred_boxes[t].unsqueeze(0)
+                    draw_boxes = all_pred_boxes[t].unsqueeze(0) 
                     draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
 
                     # draw boxes
@@ -307,7 +248,7 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
                     draw.rectangle(((xmin, ymin), (xmax, ymax)), outline=tuple(color_list[i%len(color_list)]), width=2)
 
                     # draw reference point
-                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
+                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist() 
                     draw_reference_points(draw, ref_points, source_img.size, color=color_list[i%len(color_list)])
 
                     # draw mask
@@ -331,14 +272,12 @@ def sub_processor(pid, args, data, save_path_prefix, save_visualize_path_prefix,
             #     mask = Image.fromarray(mask * 255).convert('L')
             #     save_file = os.path.join(save_path, frame_name + ".png")
             #     mask.save(save_file)
-            print(f'{i}th expression in {video_name}: {exp}')
 
-        print('finish 2 expression loop')
-        # with lock:
-        #     progress.update(1)
+        with lock:
+            progress.update(1)
     result_dict[str(pid)] = num_all_frames
-    # with lock:
-    #     progress.close()
+    with lock:
+        progress.close()
 
 
 # visuaize functions
@@ -372,7 +311,7 @@ def draw_sample_points(draw, sample_points, img_size, color_list):
             x, y = sample
             cur_color = color_list[i % len(color_list)][::-1]
             cur_color += [alpha]
-            draw.ellipse((x-2, y-2, x+2, y+2),
+            draw.ellipse((x-2, y-2, x+2, y+2), 
                             fill=tuple(cur_color), outline=tuple(cur_color), width=1)
 
 def vis_add_mask(img, mask, color):
@@ -386,6 +325,7 @@ def vis_add_mask(img, mask, color):
     origin_img = Image.fromarray(origin_img)
     return origin_img
 
+  
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('ReferFormer inference script', parents=[opts.get_args_parser()])

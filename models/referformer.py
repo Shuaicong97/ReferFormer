@@ -571,6 +571,8 @@ def build(args):
             num_classes = 78
         elif args.dataset_file == 'a2d' or args.dataset_file == 'jhmdb' or args.mot:
             num_classes = 1
+        elif args.ovis:
+            num_classes = 25
         else: 
             num_classes = 91  # for coco
     device = torch.device(args.device)

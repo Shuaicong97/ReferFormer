@@ -43,3 +43,19 @@ davis_category_list = [
     'ski', 'ski poles', 'snake', 'snowboard', 'stick', 'stroller', 'surfboard', 'swing', 'tennis racket', 'tractor', 'trailer', 
     'train', 'truck', 'turtle', 'varanus', 'violin', 'wheelchair'
 ]
+
+# -------------------------------------------------------------------------------------------------------------------
+# 3. OVIS
+ovis_category_dict = {
+    'Person': 0, 'Bird': 1, 'Cat': 2, 'Dog': 3, 'Horse': 4, 'Sheep': 5, 'Cow': 6, 'Elephant': 7, 'Bear': 8, 'Zebra': 9,
+    'Giraffe': 10, 'Poultry': 11, 'Giant_panda': 12, 'Lizard': 13, 'Parrot': 14, 'Monkey': 15, 'Rabbit': 16, 'Tiger': 17,
+    'Fish': 18, 'Turtle': 19, 'Bicycle': 20, 'Motorcycle': 21, 'Airplane': 22, 'Boat': 23, 'Vehical': 24
+}
+
+ovis_category_list = [
+    'Person', 'Bird', 'Cat', 'Dog', 'Horse', 'Sheep', 'Cow', 'Elephant', 'Bear', 'Zebra',
+    'Giraffe', 'Poultry', 'Giant_panda', 'Lizard', 'Parrot', 'Monkey', 'Rabbit', 'Tiger',
+    'Fish', 'Turtle', 'Bicycle', 'Motorcycle', 'Airplane', 'Boat', 'Vehical'
+]
+
+

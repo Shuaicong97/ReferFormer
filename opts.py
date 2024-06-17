@@ -117,6 +117,8 @@ def get_args_parser():
     parser.add_argument('--binary', action='store_true')
     parser.add_argument('--remove_difficult', action='store_true')
     parser.add_argument('--mot', action='store_true')
+    parser.add_argument('--ovis', action='store_true')
+
 
     parser.add_argument('--output_dir', default='output',
                         help='path where to save, empty for no saving')
