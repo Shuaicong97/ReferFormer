@@ -194,8 +194,10 @@ def build_matcher(args):
             num_classes = 65
         elif args.dataset_file == 'davis':
             num_classes = 78
-        elif args.dataset_file == 'a2d' or args.dataset_file == 'jhmdb' or args.mot:
+        elif args.dataset_file == 'a2d' or args.dataset_file == 'jhmdb' or args.mot17:
             num_classes = 1
+        elif args.ovis:
+            num_classes = 25
         else:
             num_classes = 91  # for coco
     return HungarianMatcher(cost_class=args.set_cost_class,

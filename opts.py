@@ -78,7 +78,9 @@ def get_args_parser():
                         help="Dynamic conv final channel number")
     parser.add_argument('--no_rel_coord', dest='rel_coord', action='store_false',
                         help="Disables relative coordinates")
-    
+
+    parser.add_argument('--top_k', default=5, type=int, help="Get top k scores in Inference.")
+
     # Loss
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
                         help="Disables auxiliary decoding losses (loss at each layer)")
@@ -116,7 +118,7 @@ def get_args_parser():
     parser.add_argument('--max_size', default=640, type=int, help="max size for the frame")
     parser.add_argument('--binary', action='store_true')
     parser.add_argument('--remove_difficult', action='store_true')
-    parser.add_argument('--mot', action='store_true')
+    parser.add_argument('--mot17', action='store_true')
     parser.add_argument('--ovis', action='store_true')
 
 

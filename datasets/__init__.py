@@ -7,7 +7,7 @@ from .a2d import build as build_a2d
 from .jhmdb import build as build_jhmdb
 from .refexp import build as build_refexp
 from .concat_dataset import build as build_joint
-from .mot_in_ytvos import build as build_mot
+from .mot17_in_ytvos import build as build_mot17
 from .ovis_in_ytvos import build as build_ovis
 
 
@@ -23,8 +23,8 @@ def get_coco_api_from_dataset(dataset):
 
 def build_dataset(dataset_file: str, image_set: str, args):
     if dataset_file == 'ytvos':
-        if args.mot:
-            return build_mot(image_set, args)
+        if args.mot17:
+            return build_mot17(image_set, args)
         elif args.ovis:
             return build_ovis(image_set, args)
         else:
