@@ -32,28 +32,29 @@ class YTVOSDataset(Dataset):
     annotations were publicly released only for the 'train' subset of the competition.
 
     """
-    def __init__(self, img_folder: Path, ann_file: Path, transforms, return_masks: bool, 
+
+    def __init__(self, img_folder: Path, ann_file: Path, transforms, return_masks: bool,
                  num_frames: int, max_skip: int):
-        self.img_folder = img_folder     
-        self.ann_file = ann_file         
-        self._transforms = transforms    
-        self.return_masks = return_masks # not used
-        self.num_frames = num_frames     
+        self.img_folder = img_folder
+        self.ann_file = ann_file
+        self._transforms = transforms
+        self.return_masks = return_masks  # not used
+        self.num_frames = num_frames
         self.max_skip = max_skip
         # create video meta data
-        self.prepare_metas()       
+        self.prepare_metas()
 
-        print('\n video num: ', len(self.videos), ' clip num: ', len(self.metas))  
-        print('\n')    
+        print('\n video num: ', len(self.videos), ' clip num: ', len(self.metas))
+        print('\n')
 
     def prepare_metas(self):
         # read object information
-        # here img_folder = data/mot17/train
+        # here img_folder = data/ovis/train
         with open(os.path.join(str(self.img_folder), 'meta.json'), 'r') as f:
             subset_metas_by_video = json.load(f)['videos']
-        
+
         # read expression data
-        # here ann_file = data/mot17/meta_expressions/train/meta_expressions.json
+        # here ann_file = data/ovis/meta_expressions/train/meta_expressions.json
         with open(str(self.ann_file), 'r') as f:
             subset_expressions_by_video = json.load(f)['videos']
         self.videos = list(subset_expressions_by_video.keys())
@@ -64,21 +65,22 @@ class YTVOSDataset(Dataset):
             vid_data = subset_expressions_by_video[vid]
             vid_frames = sorted(vid_data['frames'])
             vid_len = len(vid_frames)
-            # print('items: ', vid_data['expressions'].items())
-            for exp_id, exp_list in vid_data['expressions'].items():
+            print('items: ', vid_data['expressions'].items())
+            for exp_id, exp_dict in vid_data['expressions'].items():
                 # print('exp_dict: ', exp_list)  # a dictionary for objects with same 'exp'
-                for exp_dict in exp_list:
-                    for frame_id in range(0, vid_len, self.num_frames):
-                        meta = {}
-                        meta['video'] = vid
-                        meta['exp'] = exp_dict['exp']
-                        meta['obj_id'] = int(exp_dict['obj_id'])
-                        meta['frames'] = vid_frames
-                        meta['frame_id'] = frame_id
-                        # get object category
-                        obj_id = exp_dict['obj_id']
-                        meta['category'] = vid_meta['objects'][obj_id]['category']
-                        self.metas.append(meta)
+                for frame_id in range(0, vid_len, self.num_frames):
+                    meta = {}
+                    meta['video'] = vid
+                    meta['exp'] = exp_dict['exp']
+                    # get obj info
+                    for obj in exp_dict['obj']:
+                        meta['obj_id'] = int(obj['obj_id'])
+                        meta['category'] = vid_meta['objects'][obj['obj_id']]['category']
+
+                    meta['frames'] = vid_frames
+                    meta['frame_id'] = frame_id
+                    print(meta)
+                    self.metas.append(meta)
 
     @staticmethod
     def bounding_box(img):
@@ -86,22 +88,21 @@ class YTVOSDataset(Dataset):
         cols = np.any(img, axis=0)
         rmin, rmax = np.where(rows)[0][[0, -1]]
         cmin, cmax = np.where(cols)[0][[0, -1]]
-        return rmin, rmax, cmin, cmax # y1, y2, x1, x2
+        return rmin, rmax, cmin, cmax  # y1, y2, x1, x2
 
     # @staticmethod
     # def bounding_box_from_gt(gt):
 
-        
     def __len__(self):
         return len(self.metas)
-        
+
     def __getitem__(self, idx):
         instance_check = False
         while not instance_check:
             meta = self.metas[idx]  # dict
 
             video, exp, obj_id, category, frames, frame_id = \
-                        meta['video'], meta['exp'], meta['obj_id'], meta['category'], meta['frames'], meta['frame_id']
+                meta['video'], meta['exp'], meta['obj_id'], meta['category'], meta['frames'], meta['frame_id']
             # print('video: ', video, ', obj_id: ', obj_id)
             # clean up the caption
             exp = " ".join(exp.lower().split())
@@ -117,7 +118,7 @@ class YTVOSDataset(Dataset):
                 sample_id_after = random.randint(1, 3)
                 local_indx = [max(0, frame_id - sample_id_before), min(vid_len - 1, frame_id + sample_id_after)]
                 sample_indx.extend(local_indx)
-    
+
                 # global sampling
                 if num_frames > 3:
                     all_inds = list(range(vid_len))
@@ -127,13 +128,13 @@ class YTVOSDataset(Dataset):
                         select_id = random.sample(range(len(global_inds)), global_n)
                         for s_id in select_id:
                             sample_indx.append(global_inds[s_id])
-                    elif vid_len >=global_n:  # sample long range global frames
+                    elif vid_len >= global_n:  # sample long range global frames
                         select_id = random.sample(range(vid_len), global_n)
                         for s_id in select_id:
                             sample_indx.append(all_inds[s_id])
                     else:
-                        select_id = random.sample(range(vid_len), global_n - vid_len) + list(range(vid_len))           
-                        for s_id in select_id:                                                                   
+                        select_id = random.sample(range(vid_len), global_n - vid_len) + list(range(vid_len))
+                        for s_id in select_id:
                             sample_indx.append(all_inds[s_id])
             sample_indx.sort()
             # print(len(sample_indx), 'sample_index: ', sample_indx)
@@ -197,7 +198,7 @@ class YTVOSDataset(Dataset):
 
             # transform
             w, h = img.size
-            labels = torch.stack(labels, dim=0) 
+            labels = torch.stack(labels, dim=0)
             boxes = torch.stack(boxes, dim=0)
             boxes[:, 0::2].clamp_(min=0, max=w)
             boxes[:, 1::2].clamp_(min=0, max=h)
@@ -207,19 +208,19 @@ class YTVOSDataset(Dataset):
                 masks = torch.tensor([])
 
             target = {
-                'frames_idx': torch.tensor(sample_indx), # [T,]
-                'labels': labels,                        # [T,]
-                'boxes': boxes,                          # [T, 4], xyxy
-                'masks': masks,                          # [T, H, W]
-                'valid': torch.tensor(valid),            # [T,]
+                'frames_idx': torch.tensor(sample_indx),  # [T,]
+                'labels': labels,  # [T,]
+                'boxes': boxes,  # [T, 4], xyxy
+                'masks': masks,  # [T, H, W]
+                'valid': torch.tensor(valid),  # [T,]
                 'caption': exp,
-                'orig_size': torch.as_tensor([int(h), int(w)]), 
+                'orig_size': torch.as_tensor([int(h), int(w)]),
                 'size': torch.as_tensor([int(h), int(w)])
             }
             # "boxes" normalize to [0, 1] and transform from xyxy to cxcywh in self._transform
-            imgs, target = self._transforms(imgs, target) 
-            imgs = torch.stack(imgs, dim=0) # [T, 3, H, W]
-            
+            imgs, target = self._transforms(imgs, target)
+            imgs = torch.stack(imgs, dim=0)  # [T, 3, H, W]
+
             # FIXME: handle "valid", since some box may be removed due to random crop
             if torch.any(target['valid'] == 1):  # at leatst one instance
                 instance_check = True
@@ -255,7 +256,7 @@ def make_coco_transforms(image_set, max_size=640):
             ),
             normalize,
         ])
-    
+
     # we do not use the 'val' set since the annotations are inaccessible
     if image_set == 'val':
         return T.Compose([
@@ -271,11 +272,11 @@ def build(image_set, args):
     assert root.exists(), f'provided YTVOS path {root} does not exist'
     PATHS = {
         "train": (root / "train", root / "meta_expressions" / "train" / "meta_expressions.json"),
-        "val": (root / "valid", root / "meta_expressions" / "val" / "meta_expressions.json"),    # not used actually
+        "val": (root / "valid", root / "meta_expressions" / "val" / "meta_expressions.json"),  # not used actually
     }
     img_folder, ann_file = PATHS[image_set]
     print('ovis info: ', img_folder, ' & ', ann_file)
-    dataset = YTVOSDataset(img_folder, ann_file, transforms=make_coco_transforms(image_set, max_size=args.max_size), return_masks=args.masks, 
+    dataset = YTVOSDataset(img_folder, ann_file, transforms=make_coco_transforms(image_set, max_size=args.max_size),
+                           return_masks=args.masks,
                            num_frames=args.num_frames, max_skip=args.max_skip)
     return dataset
-
