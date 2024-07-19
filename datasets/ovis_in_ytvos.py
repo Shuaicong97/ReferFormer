@@ -79,7 +79,7 @@ class YTVOSDataset(Dataset):
 
                     meta['frames'] = vid_frames
                     meta['frame_id'] = frame_id
-                    print(meta)
+                    # print(meta)
                     self.metas.append(meta)
 
     @staticmethod
