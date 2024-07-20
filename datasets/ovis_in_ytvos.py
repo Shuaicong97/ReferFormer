@@ -65,7 +65,7 @@ class YTVOSDataset(Dataset):
             vid_data = subset_expressions_by_video[vid]
             vid_frames = sorted(vid_data['frames'])
             vid_len = len(vid_frames)
-            print('items: ', vid_data['expressions'].items())
+            # print('items: ', vid_data['expressions'].items())
             for exp_id, exp_dict in vid_data['expressions'].items():
                 # print('exp_dict: ', exp_list)  # a dictionary for objects with same 'exp'
                 for frame_id in range(0, vid_len, self.num_frames):
