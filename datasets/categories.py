@@ -48,14 +48,16 @@ davis_category_list = [
 # 3. OVIS
 ovis_category_dict = {
     'Person': 0, 'Bird': 1, 'Cat': 2, 'Dog': 3, 'Horse': 4, 'Sheep': 5, 'Cow': 6, 'Elephant': 7, 'Bear': 8, 'Zebra': 9,
-    'Giraffe': 10, 'Poultry': 11, 'Giant_panda': 12, 'Lizard': 13, 'Parrot': 14, 'Monkey': 15, 'Rabbit': 16, 'Tiger': 17,
-    'Fish': 18, 'Turtle': 19, 'Bicycle': 20, 'Motorcycle': 21, 'Airplane': 22, 'Boat': 23, 'Vehical': 24
+    'Giraffe': 10, 'Poultry': 11, 'Giant_panda': 12, 'Lizard': 13, 'Parrot': 14, 'Monkey': 15, 'Rabbit': 16,
+    'Tiger': 17, 'Fish': 18, 'Turtle': 19, 'Bicycle': 20, 'Motorcycle': 21, 'Airplane': 22, 'Boat': 23, 'Vehicle': 24,
+    'Deer': 25, 'Goat': 26, 'Bull': 27, 'Scooter': 28, 'Ship': 29
 }
 
 ovis_category_list = [
     'Person', 'Bird', 'Cat', 'Dog', 'Horse', 'Sheep', 'Cow', 'Elephant', 'Bear', 'Zebra',
-    'Giraffe', 'Poultry', 'Giant_panda', 'Lizard', 'Parrot', 'Monkey', 'Rabbit', 'Tiger',
-    'Fish', 'Turtle', 'Bicycle', 'Motorcycle', 'Airplane', 'Boat', 'Vehical'
+    'Giraffe', 'Poultry', 'Giant_panda', 'Lizard', 'Parrot', 'Monkey', 'Rabbit',
+    'Tiger', 'Fish', 'Turtle', 'Bicycle', 'Motorcycle', 'Airplane', 'Boat', 'Vehicle',
+    'Deer', 'Goat', 'Bull', 'Scooter', 'Ship'
 ]
 
 
