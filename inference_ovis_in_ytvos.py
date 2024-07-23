@@ -203,8 +203,12 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             # according to pred_logits, select the query index
             pred_scores = pred_logits.sigmoid()  # [t, q, k]
             pred_scores = pred_scores.mean(0)  # [q, k]
+            print(f'pred_scores shape: {pred_scores.shape}')
+            last_dim_size = pred_scores.size(-1)
+            top_k = min(args.top_k, last_dim_size)
 
-            topk_scores, topk_indices = torch.topk(pred_scores, args.top_k, dim=-1)  # [q, k]
+            topk_scores, topk_indices = torch.topk(pred_scores, top_k, dim=-1)  # [q, k]
+            print(f'for {i}th expression, top k is {top_k}')
             max_inds = topk_indices.view(-1).repeat(video_len)
 
             # max_scores, _ = pred_scores.max(-1) # [q,]
