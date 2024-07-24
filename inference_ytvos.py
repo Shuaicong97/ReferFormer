@@ -230,6 +230,12 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
             all_pred_masks = pred_masks
 
+            if i == 1:
+                print(f'Tensor information - pred_logits.shape: {pred_logits.shape}, '
+                      f'pred_scores.shape: {pred_scores.shape}, max_inds.shape: {max_inds.shape}, '
+                      f'all_pred_logits.shape: {all_pred_logits.shape}, '
+                      f'pred_logits[range(video_len), max_inds]: {pred_logits[range(video_len), max_inds]}')
+
             if args.visualize:
                 save_boxes_filename = os.path.join(save_boxes_path_prefix, video + str(i) + '.txt')
                 with open(save_boxes_filename, 'w') as f:
