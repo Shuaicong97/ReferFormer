@@ -195,7 +195,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 outputs = model([imgs], [exp], [target])
 
             pred_logits = outputs["pred_logits"][0]
-            print(f'{video_name}, {i}th expression has {len(pred_logits)} predictions')
+            print(f'pred_logits.shape: {pred_logits.shape}, {i}th expression has {len(pred_logits)} predictions')
             pred_boxes = outputs["pred_boxes"][0]
             # pred_masks = outputs["pred_masks"][0]
             pred_ref_points = outputs["reference_points"][0]
@@ -208,8 +208,8 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             top_k = min(args.top_k, last_dim_size)
 
             topk_scores, topk_indices = torch.topk(pred_scores, top_k, dim=-1)  # [q, k]
-            print(f'for {i}th expression, top k is {top_k}')
             max_inds = topk_indices.view(-1).repeat(video_len)
+            print(f'for {i}th expression, top k is {top_k}, max_inds shape: {max_inds.shape}')
 
             # max_scores, _ = pred_scores.max(-1) # [q,]
             # _, max_ind = max_scores.max(-1)     # [1,]
