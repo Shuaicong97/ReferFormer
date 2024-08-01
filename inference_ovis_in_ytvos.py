@@ -195,21 +195,16 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 outputs = model([imgs], [exp], [target])
 
             pred_logits = outputs["pred_logits"][0]
-            print(f'pred_logits.shape: {pred_logits.shape}, {i}th expression has {len(pred_logits)} predictions')
             pred_boxes = outputs["pred_boxes"][0]
             # pred_masks = outputs["pred_masks"][0]
             pred_ref_points = outputs["reference_points"][0]
+            print(video, i, 'outputs info: ', pred_logits.shape, pred_boxes.shape, pred_ref_points.shape)
 
             # according to pred_logits, select the query index
             pred_scores = pred_logits.sigmoid()  # [t, q, k]
             pred_scores = pred_scores.mean(0)  # [q, k]
-            print(f'pred_scores shape: {pred_scores.shape}')
-            last_dim_size = pred_scores.size(-1)
-            top_k = min(args.top_k, last_dim_size)
-
-            topk_scores, topk_indices = torch.topk(pred_scores, top_k, dim=-1)  # [q, k]
-            max_inds = topk_indices.view(-1).repeat(video_len)
-            print(f'for {i}th expression, top k is {top_k}, max_inds shape: {max_inds.shape}')
+            pred_scores = pred_scores.squeeze(-1)
+            top_scores, top_inds = pred_scores.topk(args.top_k)  # [5]
 
             # max_scores, _ = pred_scores.max(-1) # [q,]
             # _, max_ind = max_scores.max(-1)     # [1,]
@@ -226,11 +221,22 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             # all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
             # all_pred_masks = pred_masks
 
-            all_pred_logits = pred_logits[range(video_len), max_inds.view(video_len, -1)].view(video_len, args.top_k,
-                                                                                               -1)
-            all_pred_boxes = pred_boxes[range(video_len), max_inds.view(video_len, -1)].view(video_len, args.top_k, -1)
-            all_pred_ref_points = pred_ref_points[range(video_len), max_inds.view(video_len, -1)].view(video_len,
-                                                                                                       args.top_k, -1)
+            all_pred_logits = []
+            all_pred_boxes = []
+            all_pred_ref_points = []
+
+            for idx in top_inds:
+                inds = idx.repeat(video_len)
+
+                all_pred_logits.append(pred_logits[range(video_len), inds])
+                all_pred_boxes.append(pred_boxes[range(video_len), inds])
+                all_pred_ref_points.append(pred_ref_points[range(video_len), inds])
+
+
+            all_pred_logits = torch.stack(all_pred_logits, dim=1)
+            all_pred_boxes = torch.stack(all_pred_boxes, dim=1)
+            print(f'for {i}th expression, all_pred_logits shape is {all_pred_logits.shape}, '
+                  f'all_pred_boxes shape: {all_pred_boxes.shape}')
 
             save_path_all_pred_boxes = os.path.join(save_path_prefix, video_name, 'all_pred_boxes')
             if not os.path.exists(save_path_all_pred_boxes):
@@ -242,12 +248,13 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
             with open(save_boxes_path, "w") as f:
                 f.write(f'Bounding Boxes Information for Expression {exp_id} - {exp}:\n')
-                f.write('frame_nr   xmin   ymin    xmax    ymax\n')
+                f.write('frame_nr   draw_boxes\n')
                 for t, frame in enumerate(frames):
                     draw_boxes = all_pred_boxes[t].unsqueeze(0)
                     draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
                     xmin, ymin, xmax, ymax = draw_boxes[0]
-                    box_str = f"{xmin} {ymin} {xmax} {ymax}"
+                    print(t, xmin, ymin, xmax, ymax, 'draw_boxes: ', draw_boxes, type(draw_boxes))
+                    box_str = f"{t} {draw_boxes}"
                     f.write(box_str + "\n")
 
             if args.visualize:
