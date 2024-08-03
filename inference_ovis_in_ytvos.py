@@ -232,7 +232,6 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 all_pred_boxes.append(pred_boxes[range(video_len), inds])
                 all_pred_ref_points.append(pred_ref_points[range(video_len), inds])
 
-
             all_pred_logits = torch.stack(all_pred_logits, dim=1)
             all_pred_boxes = torch.stack(all_pred_boxes, dim=1)
             print(f'for {i}th expression, all_pred_logits shape is {all_pred_logits.shape}, '
@@ -251,11 +250,13 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 f.write('frame_nr   draw_boxes\n')
                 for t, frame in enumerate(frames):
                     draw_boxes = all_pred_boxes[t].unsqueeze(0)
-                    draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
-                    xmin, ymin, xmax, ymax = draw_boxes[0]
-                    print(t, xmin, ymin, xmax, ymax, 'draw_boxes: ', draw_boxes, type(draw_boxes))
-                    box_str = f"{t} {draw_boxes}"
-                    f.write(box_str + "\n")
+                    for draw_box in draw_boxes[0]:
+                        draw_box = draw_box.unsqueeze(0)
+                        draw_box = rescale_bboxes(draw_box.detach(), (origin_w, origin_h)).tolist()
+                        xmin, ymin, xmax, ymax = draw_box[0]
+                        print(t, xmin, ymin, xmax, ymax, 'draw_box: ', draw_box)
+                        box_str = f"{t} {draw_box}"
+                        f.write(box_str + "\n")
 
             if args.visualize:
                 for t, frame in enumerate(frames):
