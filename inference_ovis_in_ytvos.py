@@ -234,6 +234,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
             all_pred_logits = torch.stack(all_pred_logits, dim=1)
             all_pred_boxes = torch.stack(all_pred_boxes, dim=1)
+            all_pred_ref_points = torch.stack(all_pred_ref_points, dim=1)
             print(f'for {i}th expression, all_pred_logits shape is {all_pred_logits.shape}, '
                   f'all_pred_boxes shape: {all_pred_boxes.shape}')
 
