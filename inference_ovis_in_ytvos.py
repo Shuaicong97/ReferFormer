@@ -254,8 +254,8 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                         draw_box = draw_box.unsqueeze(0)
                         draw_box = rescale_bboxes(draw_box.detach(), (origin_w, origin_h)).tolist()
                         xmin, ymin, xmax, ymax = draw_box[0]
-                        print(t, xmin, ymin, xmax, ymax, 'draw_box: ', draw_box)
-                        box_str = f"{t} {draw_box}"
+                        # print(t, xmin, ymin, xmax, ymax, 'draw_box: ', draw_box)
+                        box_str = f"{t}, {xmin}, {ymin}, {xmax}, {ymax}"
                         f.write(box_str + "\n")
 
             if args.visualize:
@@ -278,7 +278,6 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                     # draw reference point
                     print(all_pred_ref_points[t].unsqueeze(0).shape)
                     ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
-                    print(ref_points.shape)
                     draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
 
                     # draw mask
