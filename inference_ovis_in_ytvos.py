@@ -266,6 +266,8 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
                     draw = ImageDraw.Draw(source_img)
                     draw_boxes = all_pred_boxes[t].unsqueeze(0)
+                    print('yy: ', draw_boxes.shape)
+
                     for draw_box in draw_boxes[0]:
                         draw_box = draw_box.unsqueeze(0)
                         draw_box = rescale_bboxes(draw_box.detach(), (origin_w, origin_h)).tolist()
@@ -276,8 +278,8 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                                        width=2)
 
                     # draw reference point
-                    print(all_pred_ref_points[t].unsqueeze(0).shape)
-                    ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
+                    print('xx: ', all_pred_ref_points[t].unsqueeze(0).shape)
+                    ref_points = all_pred_ref_points[t].detach().cpu().tolist()
                     draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
 
                     # draw mask
