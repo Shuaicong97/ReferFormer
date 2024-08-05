@@ -248,7 +248,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
             with open(save_boxes_path, "w") as f:
                 f.write(f'Bounding Boxes Information for Expression {exp_id} - {exp}:\n')
-                f.write('frame_nr   draw_boxes\n')
+                f.write('frame_nr   draw_boxes   logits\n')
                 for t, frame in enumerate(frames):
                     draw_boxes = all_pred_boxes[t].unsqueeze(0)
                     for draw_box in draw_boxes[0]:
@@ -257,7 +257,11 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                         xmin, ymin, xmax, ymax = draw_box[0]
                         # print(t, xmin, ymin, xmax, ymax, 'draw_box: ', draw_box)
                         box_str = f"{t}, {xmin}, {ymin}, {xmax}, {ymax}"
-                        f.write(box_str + "\n")
+                    pred_logits = all_pred_logits[t].unsqueeze(0)
+                    for pred_logit in pred_logits[0]:
+                        pred_logit = pred_logit.unsqueeze(0)
+                        print(f'pred_logit: {pred_logit}, {pred_logit.shape}')
+                        f.write(box_str + pred_logit + "\n")
 
             if args.visualize:
                 for t, frame in enumerate(frames):
