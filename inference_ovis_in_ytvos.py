@@ -29,6 +29,7 @@ import multiprocessing as mp
 import threading
 
 from tools.colormap import colormap
+from PIL import ImageFont
 
 # colormap
 color_list = colormap()
@@ -198,13 +199,14 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             pred_boxes = outputs["pred_boxes"][0]
             # pred_masks = outputs["pred_masks"][0]
             pred_ref_points = outputs["reference_points"][0]
-            print(video, i, 'outputs info: ', pred_logits.shape, pred_boxes.shape, pred_ref_points.shape)
 
             # according to pred_logits, select the query index
             pred_scores = pred_logits.sigmoid()  # [t, q, k]
             pred_scores = pred_scores.mean(0)  # [q, k]
             pred_scores = pred_scores.squeeze(-1)
             top_scores, top_inds = pred_scores.topk(args.top_k)  # [5]
+            print(video, i, 'outputs info: ', pred_logits.shape, pred_boxes.shape, pred_ref_points.shape,
+                  'top_scores: ', top_scores, top_inds)
 
             # max_scores, _ = pred_scores.max(-1) # [q,]
             # _, max_ind = max_scores.max(-1)     # [1,]
@@ -232,11 +234,11 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 all_pred_boxes.append(pred_boxes[range(video_len), inds])
                 all_pred_ref_points.append(pred_ref_points[range(video_len), inds])
 
-            all_pred_logits = torch.stack(all_pred_logits, dim=1)
+            all_pred_logits = torch.stack(all_pred_logits, dim=1)  # shape [video_len, args.top_k, k]
             all_pred_boxes = torch.stack(all_pred_boxes, dim=1)
             all_pred_ref_points = torch.stack(all_pred_ref_points, dim=1)
-            print(f'for {i}th expression, all_pred_logits shape is {all_pred_logits.shape}, '
-                  f'all_pred_boxes shape: {all_pred_boxes.shape}')
+            # print(f'for {i}th expression, all_pred_logits shape is {all_pred_logits.shape}, '
+            #       f'all_pred_boxes shape: {all_pred_boxes.shape}')
 
             save_path_all_pred_boxes = os.path.join(save_path_prefix, video_name, 'all_pred_boxes')
             if not os.path.exists(save_path_all_pred_boxes):
@@ -260,9 +262,10 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                     pred_logits = all_pred_logits[t].unsqueeze(0)
                     for pred_logit in pred_logits[0]:
                         pred_logit = pred_logit.unsqueeze(0)
-                        print(f'pred_logit: {pred_logit}, {pred_logit.shape}')
+                        # print(f'pred_logit: {pred_logit}, {pred_logit.shape}')
                         f.write(box_str + pred_logit + "\n")
 
+            font = ImageFont.load_default()
             if args.visualize:
                 for t, frame in enumerate(frames):
                     # original
@@ -271,9 +274,11 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
                     draw = ImageDraw.Draw(source_img)
                     draw_boxes = all_pred_boxes[t].unsqueeze(0)
-                    print('yy: ', draw_boxes.shape)
+                    # print('yy: ', draw_boxes.shape)
 
-                    for draw_box in draw_boxes[0]:
+                    pred_logits = all_pred_logits[t].unsqueeze(0)
+
+                    for i, (draw_box, pred_logit) in enumerate(zip(draw_boxes[0], pred_logits[0])):
                         draw_box = draw_box.unsqueeze(0)
                         draw_box = rescale_bboxes(draw_box.detach(), (origin_w, origin_h)).tolist()
 
@@ -282,8 +287,13 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                         draw.rectangle(((xmin, ymin), (xmax, ymax)), outline=tuple(color_list[i % len(color_list)]),
                                        width=2)
 
+                        logit_score = pred_logit.squeeze().detach().cpu().item()  # get logit score
+                        label_text = f"({i + 1}, {logit_score:.3f})"  # e.g. (1, 0.823), keep 3 decimal
+                        text_position = (xmin, ymin)
+                        draw.text(text_position, label_text, fill="white", font=font)
+
                     # draw reference point
-                    print('xx: ', all_pred_ref_points[t].unsqueeze(0).shape)
+                    # print('xx: ', all_pred_ref_points[t].unsqueeze(0).shape)
                     ref_points = all_pred_ref_points[t].detach().cpu().tolist()
                     draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
 
