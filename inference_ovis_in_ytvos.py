@@ -263,7 +263,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                     for pred_logit in pred_logits[0]:
                         pred_logit = pred_logit.unsqueeze(0)
                         # print(f'pred_logit: {pred_logit}, {pred_logit.shape}')
-                        f.write(box_str + pred_logit + "\n")
+                        f.write(box_str + f", {pred_logit.item():.3f}\n")
 
             font = ImageFont.load_default()
             if args.visualize:
