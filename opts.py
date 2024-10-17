@@ -79,7 +79,7 @@ def get_args_parser():
     parser.add_argument('--no_rel_coord', dest='rel_coord', action='store_false',
                         help="Disables relative coordinates")
 
-    parser.add_argument('--top_k', default=5, type=int, help="Get top k scores in Inference.")
+    parser.add_argument('--top_k', default=5, type=int, help="Get top k scores in Inference for ovis and mot.")
 
     # Loss
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',

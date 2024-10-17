@@ -45,6 +45,7 @@ transform = T.Compose([
 
 def main(args):
     # args.masks = True
+    # num_queries needs to be changed to 10 for ovis and mot
     args.batch_size == 1
     print("Inference only supports for batch size = 1")
 
@@ -62,6 +63,9 @@ def main(args):
         os.makedirs(save_path_prefix)
 
     save_visualize_path_prefix = os.path.join(output_dir, split + '_images')
+    save_boxes_path_prefix = os.path.join(output_dir, split + '_boxes')
+    if not os.path.exists(save_boxes_path_prefix):
+        os.makedirs(save_boxes_path_prefix)
     if args.visualize:
         if not os.path.exists(save_visualize_path_prefix):
             os.makedirs(save_visualize_path_prefix)
@@ -74,7 +78,7 @@ def main(args):
         data = json.load(f)["videos"]
     valid_videos = set(data.keys())
     video_list = sorted([video for video in valid_videos])
-    print(f'len(video_list): {len(video_list)}')
+    print(f'len(video_list): {len(video_list)}: {video_list}')
 
     # create subprocess
     thread_num = args.ngpu
@@ -94,8 +98,9 @@ def main(args):
             sub_video_list = video_list[i * per_thread_video_num:]
         else:
             sub_video_list = video_list[i * per_thread_video_num: (i + 1) * per_thread_video_num]
+        print(f'{i}th thread, sub video list is {sub_video_list}')
         p = mp.Process(target=sub_processor, args=(lock, i, args, data,
-                                                   save_path_prefix, save_visualize_path_prefix,
+                                                   save_path_prefix, save_visualize_path_prefix, save_boxes_path_prefix,
                                                    img_folder, sub_video_list))
         p.start()
         processes.append(p)
@@ -114,7 +119,7 @@ def main(args):
     print("Total inference time: %.4f s" % (total_time))
 
 
-def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_prefix, img_folder, video_list):
+def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_prefix, save_boxes_path_prefix, img_folder, video_list):
     text = 'processor %d' % pid
     with lock:
         progress = tqdm(
@@ -153,6 +158,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
     # 1. For each video
     for video in video_list:
+        print(f'video {video} is in inference')
         metas = []  # list[dict], length is number of expressions
 
         expressions = data[video]["expressions"]
@@ -203,109 +209,65 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             # according to pred_logits, select the query index
             pred_scores = pred_logits.sigmoid()  # [t, q, k]
             pred_scores = pred_scores.mean(0)  # [q, k]
-            pred_scores = pred_scores.squeeze(-1)
-            top_scores, top_inds = pred_scores.topk(args.top_k)  # [5]
-            print(video, i, 'outputs info: ', pred_logits.shape, pred_boxes.shape, pred_ref_points.shape,
-                  'top_scores: ', top_scores, top_inds)
+            max_scores, _ = pred_scores.max(-1) # [q,]
+            top_k_values, top_k_indices = torch.topk(max_scores, k=args.top_k)
 
-            # max_scores, _ = pred_scores.max(-1) # [q,]
-            # _, max_ind = max_scores.max(-1)     # [1,]
-            # max_inds = max_ind.repeat(video_len)
-            # pred_masks = pred_masks[range(video_len), max_inds, ...] # [t, h, w]
-            # pred_masks = pred_masks.unsqueeze(0)
+            new_indices = torch.arange(1, args.top_k + 1)
 
-            # pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
-            # pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
+            # for each index in top k, do the same following operations
+            for idx, index in enumerate(top_k_indices):
+                print('index type: ', type(index), index)
+                max_inds = index.repeat(video_len)
 
-            # store the video results
-            # all_pred_logits = pred_logits[range(video_len), max_inds]
-            # all_pred_boxes = pred_boxes[range(video_len), max_inds]
-            # all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
-            # all_pred_masks = pred_masks
+                # store the video results
+                all_pred_logits = pred_logits[range(video_len), max_inds]
+                all_pred_boxes = pred_boxes[range(video_len), max_inds]
+                all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
 
-            all_pred_logits = []
-            all_pred_boxes = []
-            all_pred_ref_points = []
+                logit_score_float = max_scores[index].item()
+                # print(f"New Index: {new_indices[idx]}, Logit Score: {logit_score_float:.3f}")
 
-            for idx in top_inds:
-                inds = idx.repeat(video_len)
+                font = ImageFont.load_default()
+                if args.visualize:
+                    save_boxes_filename = os.path.join(save_boxes_path_prefix, video + '-' + str(i) + '.txt')
+                    with open(save_boxes_filename, 'w') as box_file:
+                        # TODO：need to set a score threshold to exclude the low scores rather than the fixed 5 (args.top_k)
+                        box_file.write(f'{i}th Expression. Old index in q: {index}. New Index in top_k: {new_indices[idx]}. Logit Score: {logit_score_float:.3f}:\n')
+                        box_file.write(f'Bounding Boxes Information for Expression {exp_id} - {exp}:\n')
+                        box_file.write('frame_nr   xmin   ymin    xmax    ymax\n')
 
-                all_pred_logits.append(pred_logits[range(video_len), inds])
-                all_pred_boxes.append(pred_boxes[range(video_len), inds])
-                all_pred_ref_points.append(pred_ref_points[range(video_len), inds])
+                        for t, frame in enumerate(frames):
+                            # original
+                            img_path = os.path.join(img_folder, video_name, frame + '.jpg')
+                            source_img = Image.open(img_path).convert('RGBA')  # PIL image
 
-            all_pred_logits = torch.stack(all_pred_logits, dim=1)  # shape [video_len, args.top_k, k]
-            all_pred_boxes = torch.stack(all_pred_boxes, dim=1)
-            all_pred_ref_points = torch.stack(all_pred_ref_points, dim=1)
-            # print(f'for {i}th expression, all_pred_logits shape is {all_pred_logits.shape}, '
-            #       f'all_pred_boxes shape: {all_pred_boxes.shape}')
+                            draw = ImageDraw.Draw(source_img)
+                            draw_boxes = all_pred_boxes[t].unsqueeze(0)
+                            draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
 
-            save_path_all_pred_boxes = os.path.join(save_path_prefix, video_name, 'all_pred_boxes')
-            if not os.path.exists(save_path_all_pred_boxes):
-                os.makedirs(save_path_all_pred_boxes)
+                            # draw boxes
+                            xmin, ymin, xmax, ymax = draw_boxes[0]
+                            draw.rectangle(((xmin, ymin), (xmax, ymax)), outline=tuple(color_list[i % len(color_list)]),
+                                           width=2)
 
-            save_path_all_pred_boxes = str(save_path_all_pred_boxes)
-            file_name = f"all_pred_boxes_for_exp_{i}.txt"
-            save_boxes_path = os.path.join(save_path_all_pred_boxes, file_name)
+                            # draw reference point
+                            ref_points = all_pred_ref_points[t].detach().cpu().tolist()
+                            draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
 
-            with open(save_boxes_path, "w") as f:
-                f.write(f'Bounding Boxes Information for Expression {exp_id} - {exp}:\n')
-                f.write('frame_nr   draw_boxes   logits\n')
-                for t, frame in enumerate(frames):
-                    draw_boxes = all_pred_boxes[t].unsqueeze(0)
-                    for draw_box in draw_boxes[0]:
-                        draw_box = draw_box.unsqueeze(0)
-                        draw_box = rescale_bboxes(draw_box.detach(), (origin_w, origin_h)).tolist()
-                        xmin, ymin, xmax, ymax = draw_box[0]
-                        # print(t, xmin, ymin, xmax, ymax, 'draw_box: ', draw_box)
-                        box_str = f"{t}, {xmin}, {ymin}, {xmax}, {ymax}"
-                    pred_logits = all_pred_logits[t].unsqueeze(0)
-                    for pred_logit in pred_logits[0]:
-                        pred_logit = pred_logit.unsqueeze(0)
-                        # print(f'pred_logit: {pred_logit}, {pred_logit.shape}')
-                        f.write(box_str + f", {pred_logit.item():.3f}\n")
+                            # draw mask
+                            # source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i%len(color_list)])
 
-            font = ImageFont.load_default()
-            if args.visualize:
-                for t, frame in enumerate(frames):
-                    # original
-                    img_path = os.path.join(img_folder, video_name, frame + '.jpg')
-                    source_img = Image.open(img_path).convert('RGBA')  # PIL image
+                            # add text
+                            text = f"({new_indices[idx]}, {logit_score_float:.3f})"  # e.g. (1, 0.823), keep 3 decimal
+                            text_position = (xmin, ymin)
+                            draw.text(text_position, text, fill="white", font=font)
 
-                    draw = ImageDraw.Draw(source_img)
-                    draw_boxes = all_pred_boxes[t].unsqueeze(0)
-                    # print('yy: ', draw_boxes.shape)
-
-                    pred_logits = all_pred_logits[t].unsqueeze(0)
-
-                    for i, (draw_box, pred_logit) in enumerate(zip(draw_boxes[0], pred_logits[0])):
-                        draw_box = draw_box.unsqueeze(0)
-                        draw_box = rescale_bboxes(draw_box.detach(), (origin_w, origin_h)).tolist()
-
-                        # draw boxes
-                        xmin, ymin, xmax, ymax = draw_box[0]
-                        draw.rectangle(((xmin, ymin), (xmax, ymax)), outline=tuple(color_list[i % len(color_list)]),
-                                       width=2)
-
-                        logit_score = pred_logit.squeeze().detach().cpu().item()  # get logit score
-                        label_text = f"({i + 1}, {logit_score:.3f})"  # e.g. (1, 0.823), keep 3 decimal
-                        text_position = (xmin, ymin)
-                        draw.text(text_position, label_text, fill="white", font=font)
-
-                    # draw reference point
-                    # print('xx: ', all_pred_ref_points[t].unsqueeze(0).shape)
-                    ref_points = all_pred_ref_points[t].detach().cpu().tolist()
-                    draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
-
-                    # draw mask
-                    # source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i%len(color_list)])
-
-                    # save
-                    save_visualize_path_dir = os.path.join(save_visualize_path_prefix, video, str(i))
-                    if not os.path.exists(save_visualize_path_dir):
-                        os.makedirs(save_visualize_path_dir)
-                    save_visualize_path = os.path.join(save_visualize_path_dir, frame + '.png')
-                    source_img.save(save_visualize_path)
+                            # save
+                            save_visualize_path_dir = os.path.join(save_visualize_path_prefix, video, str(i))
+                            if not os.path.exists(save_visualize_path_dir):
+                                os.makedirs(save_visualize_path_dir)
+                            save_visualize_path = os.path.join(save_visualize_path_dir, frame + '.png')
+                            source_img.save(save_visualize_path)
 
             # save binary image
             # save_path = os.path.join(save_path_prefix, video_name, exp_id)
