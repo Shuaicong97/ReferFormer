@@ -251,7 +251,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                                            width=2)
 
                             # draw reference point
-                            ref_points = all_pred_ref_points[t].detach().cpu().tolist()
+                            ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
                             draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
 
                             # draw mask
@@ -306,8 +306,8 @@ def rescale_bboxes(out_bbox, size):
 def draw_reference_points(draw, reference_points, img_size, color):
     W, H = img_size
     for i, ref_point in enumerate(reference_points):
-        print(f"reference_points: {reference_points.tolist()}, shape: {reference_points.shape}\n")
-        print(f"ref_point: {ref_point.tolist()}, {i}: {ref_point.shape}\n")
+        print(f"reference_points: {reference_points}\n")
+        print(f"ref_point: {ref_point}, {i}\n")
 
         init_x, init_y = ref_point
         x, y = W * init_x, H * init_y
