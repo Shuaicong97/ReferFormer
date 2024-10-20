@@ -158,7 +158,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
     # 1. For each video
     for video in video_list:
-        print(f'video {video} is in inference')
+        # print(f'video {video} is in inference')
         metas = []  # list[dict], length is number of expressions
 
         expressions = data[video]["expressions"]
@@ -216,7 +216,6 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
             # for each index in top k, do the same following operations
             for idx, index in enumerate(top_k_indices):
-                print('index type: ', type(index), index)
                 max_inds = index.repeat(video_len)
 
                 # store the video results
@@ -225,7 +224,8 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
 
                 logit_score_float = max_scores[index].item()
-                print(f"all_pred_ref_points: {all_pred_ref_points.tolist()}, shape: {all_pred_ref_points.shape}")
+                # print(f"all_pred_ref_points: {all_pred_ref_points.tolist()}, shape: {all_pred_ref_points.shape}")
+                print(f'video {video}, {i}th Expression. Old index in q: {index}. New Index in top_k: {new_indices[idx]}. Logit Score: {logit_score_float:.3f}:\n')
 
                 font = ImageFont.load_default()
                 if args.visualize:
@@ -249,6 +249,9 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                             xmin, ymin, xmax, ymax = draw_boxes[0]
                             draw.rectangle(((xmin, ymin), (xmax, ymax)), outline=tuple(color_list[i % len(color_list)]),
                                            width=2)
+
+                            # store boxes coordinates into files
+                            box_file.write(f"{t}, {xmin}, {ymin}, {xmax}, {ymax}\n")
 
                             # draw reference point
                             ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
@@ -306,8 +309,8 @@ def rescale_bboxes(out_bbox, size):
 def draw_reference_points(draw, reference_points, img_size, color):
     W, H = img_size
     for i, ref_point in enumerate(reference_points):
-        print(f"reference_points: {reference_points}\n")
-        print(f"ref_point: {ref_point}, {i}\n")
+        # print(f"reference_points: {reference_points}\n")
+        # print(f"ref_point: {ref_point}, {i}\n")
 
         init_x, init_y = ref_point
         x, y = W * init_x, H * init_y
