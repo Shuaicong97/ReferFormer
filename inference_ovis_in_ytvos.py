@@ -225,7 +225,7 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
 
                 logit_score_float = max_scores[index].item()
-                # print(f"New Index: {new_indices[idx]}, Logit Score: {logit_score_float:.3f}")
+                print(f"all_pred_ref_points: {all_pred_ref_points.tolist()}, shape: {all_pred_ref_points.shape}")
 
                 font = ImageFont.load_default()
                 if args.visualize:
@@ -306,6 +306,9 @@ def rescale_bboxes(out_bbox, size):
 def draw_reference_points(draw, reference_points, img_size, color):
     W, H = img_size
     for i, ref_point in enumerate(reference_points):
+        print(f"reference_points: {reference_points.tolist()}, shape: {reference_points.shape}\n")
+        print(f"ref_point: {ref_point.tolist()}, {i}: {ref_point.shape}\n")
+
         init_x, init_y = ref_point
         x, y = W * init_x, H * init_y
         cur_color = color
