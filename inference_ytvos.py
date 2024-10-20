@@ -248,8 +248,10 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             log_stats = {
                 "all_pred_logits": all_pred_logits.tolist(),
                 "all_pred_boxes": all_pred_boxes.tolist(),
+                "all_pred_ref_points": all_pred_ref_points.tolist(),
                 "all_pred_logits_shape": all_pred_logits.shape, # 【36, 1】
-                "all_pred_boxes_shape": all_pred_boxes.shape # [36, 4]
+                "all_pred_boxes_shape": all_pred_boxes.shape, # [36, 4]
+                "all_pred_ref_points_shape": all_pred_ref_points.shape  # [36, 2]
             }
             with open(save_data_filename, 'a') as data_file:
                 data_file.write(json.dumps(log_stats) + "\n")
@@ -292,7 +294,13 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
 
                         # draw reference point
                         ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
-                        draw_reference_points(draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
+                        draw_reference_points(save_data_filename, draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
+                        log_stats = {
+                            "ref_points": ref_points,
+                            # [1, 2] e.g. [[0.5581875443458557, 0.511289119720459]]
+                        }
+                        with open(save_data_filename, 'a') as data_file:
+                            data_file.write(json.dumps(log_stats) + "\n")
 
                         # draw mask
                         source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i % len(color_list)])
@@ -338,9 +346,16 @@ def rescale_bboxes(out_bbox, size):
 
 
 # Visualization functions
-def draw_reference_points(draw, reference_points, img_size, color):
+def draw_reference_points(save_data_filename, draw, reference_points, img_size, color):
     W, H = img_size
     for i, ref_point in enumerate(reference_points):
+        log_stats = {
+            "ref_point": str(i) + '-' + str(ref_point),
+            # [1, 2] e.g. "ref_point": "0-[0.6161028146743774, 0.5216344594955444]"
+        }
+        with open(save_data_filename, 'a') as data_file:
+            data_file.write(json.dumps(log_stats) + "\n")
+
         init_x, init_y = ref_point
         x, y = W * init_x, H * init_y
         cur_color = color
