@@ -224,17 +224,23 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                 "pred_boxes_shape": pred_boxes.shape  # [36, 5, 4]
             }
             save_data_filename = os.path.join(save_data_path_prefix, video + '-' + str(i) + '.txt')
-            with open(save_data_filename, 'w') as data_file:
-                data_file.write(json.dumps(log_stats) + "\n")
+            # with open(save_data_filename, 'w') as data_file:
+            #     data_file.write(json.dumps(log_stats) + "\n")
 
             # according to pred_logits, select the query index
             pred_scores = pred_logits.sigmoid()  # [t, q, k]
             pred_scores = pred_scores.mean(0)  # [q, k]
             max_scores, _ = pred_scores.max(-1)  # [q,]
-            _, max_ind = max_scores.max(-1)  # [1,]
+            max_score_value, max_ind = max_scores.max(-1)  # [1,]
             max_inds = max_ind.repeat(video_len)
             pred_masks = pred_masks[range(video_len), max_inds, ...]  # [t, h, w]
             pred_masks = pred_masks.unsqueeze(0)
+
+            log_stats = {
+                "max_score_value": max_score_value.tolist(),
+            }
+            with open(save_data_filename, 'a') as data_file:
+                data_file.write(json.dumps(log_stats) + "\n")
 
             pred_masks = F.interpolate(pred_masks, size=(origin_h, origin_w), mode='bilinear', align_corners=False)
             pred_masks = (pred_masks.sigmoid() > args.threshold).squeeze(0).detach().cpu().numpy()
@@ -245,16 +251,16 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
             all_pred_ref_points = pred_ref_points[range(video_len), max_inds]
             all_pred_masks = pred_masks
 
-            log_stats = {
-                "all_pred_logits": all_pred_logits.tolist(),
-                "all_pred_boxes": all_pred_boxes.tolist(),
-                "all_pred_ref_points": all_pred_ref_points.tolist(),
-                "all_pred_logits_shape": all_pred_logits.shape, # 【36, 1】
-                "all_pred_boxes_shape": all_pred_boxes.shape, # [36, 4]
-                "all_pred_ref_points_shape": all_pred_ref_points.shape  # [36, 2]
-            }
-            with open(save_data_filename, 'a') as data_file:
-                data_file.write(json.dumps(log_stats) + "\n")
+            # log_stats = {
+            #     "all_pred_logits": all_pred_logits.tolist(),
+            #     "all_pred_boxes": all_pred_boxes.tolist(),
+            #     "all_pred_ref_points": all_pred_ref_points.tolist(),
+            #     "all_pred_logits_shape": all_pred_logits.shape, # 【36, 1】
+            #     "all_pred_boxes_shape": all_pred_boxes.shape, # [36, 4]
+            #     "all_pred_ref_points_shape": all_pred_ref_points.shape  # [36, 2]
+            # }
+            # with open(save_data_filename, 'a') as data_file:
+            #     data_file.write(json.dumps(log_stats) + "\n")
 
             if args.visualize:
                 save_boxes_filename = os.path.join(save_boxes_path_prefix, video + str(i) + '.txt')
@@ -269,20 +275,20 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                         draw = ImageDraw.Draw(source_img)
                         draw_boxes = all_pred_boxes[t].unsqueeze(0)
 
-                        log_stats = {
-                            "draw_boxes_unsqueeze": draw_boxes.tolist(), # e.g. [0.17715811729431152, 0.6162925362586975, 0.3537765145301819, 0.7594575881958008]
-                            "draw_boxes_shape": draw_boxes.shape,  # [1, 4]
-                        }
-                        with open(save_data_filename, 'a') as data_file:
-                            data_file.write(json.dumps(log_stats) + "\n")
+                        # log_stats = {
+                        #     "draw_boxes_unsqueeze": draw_boxes.tolist(), # e.g. [0.17715811729431152, 0.6162925362586975, 0.3537765145301819, 0.7594575881958008]
+                        #     "draw_boxes_shape": draw_boxes.shape,  # [1, 4]
+                        # }
+                        # with open(save_data_filename, 'a') as data_file:
+                        #     data_file.write(json.dumps(log_stats) + "\n")
 
                         draw_boxes = rescale_bboxes(draw_boxes.detach(), (origin_w, origin_h)).tolist()
 
-                        log_stats = {
-                            "draw_boxes_rescale": draw_boxes, # [1, 4] e.g. [0.10956317186355591, 170.32589721679688, 143.74282836914062, 717.1353759765625]
-                        }
-                        with open(save_data_filename, 'a') as data_file:
-                            data_file.write(json.dumps(log_stats) + "\n")
+                        # log_stats = {
+                        #     "draw_boxes_rescale": draw_boxes, # [1, 4] e.g. [0.10956317186355591, 170.32589721679688, 143.74282836914062, 717.1353759765625]
+                        # }
+                        # with open(save_data_filename, 'a') as data_file:
+                        #     data_file.write(json.dumps(log_stats) + "\n")
 
                         # draw boxes
                         xmin, ymin, xmax, ymax = draw_boxes[0]
@@ -295,12 +301,12 @@ def sub_processor(lock, pid, args, data, save_path_prefix, save_visualize_path_p
                         # draw reference point
                         ref_points = all_pred_ref_points[t].unsqueeze(0).detach().cpu().tolist()
                         draw_reference_points(save_data_filename, draw, ref_points, source_img.size, color=color_list[i % len(color_list)])
-                        log_stats = {
-                            "ref_points": ref_points,
-                            # [1, 2] e.g. [[0.5581875443458557, 0.511289119720459]]
-                        }
-                        with open(save_data_filename, 'a') as data_file:
-                            data_file.write(json.dumps(log_stats) + "\n")
+                        # log_stats = {
+                        #     "ref_points": ref_points,
+                        #     # [1, 2] e.g. [[0.5581875443458557, 0.511289119720459]]
+                        # }
+                        # with open(save_data_filename, 'a') as data_file:
+                        #     data_file.write(json.dumps(log_stats) + "\n")
 
                         # draw mask
                         source_img = vis_add_mask(source_img, all_pred_masks[t], color_list[i % len(color_list)])
